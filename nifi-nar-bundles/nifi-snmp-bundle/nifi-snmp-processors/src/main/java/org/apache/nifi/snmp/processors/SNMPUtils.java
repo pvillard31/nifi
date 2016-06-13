@@ -48,7 +48,7 @@ import org.snmp4j.util.TreeEvent;
 /**
  * Utility helper class that simplifies interactions with target SNMP API and NIFI API.
  */
-abstract class SNMPUtils {
+public abstract class SNMPUtils {
 
     /** logger */
     private final static Logger logger = LoggerFactory.getLogger(SNMPUtils.class);
