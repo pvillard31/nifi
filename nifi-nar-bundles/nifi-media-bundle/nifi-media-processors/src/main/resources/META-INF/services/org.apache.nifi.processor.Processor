@@ -15,3 +15,4 @@
 org.apache.nifi.processors.image.ExtractImageMetadata
 org.apache.nifi.processors.image.ResizeImage
 org.apache.nifi.processors.media.ExtractMediaMetadata
+org.apache.nifi.processors.audio.SpeechRecognizer
