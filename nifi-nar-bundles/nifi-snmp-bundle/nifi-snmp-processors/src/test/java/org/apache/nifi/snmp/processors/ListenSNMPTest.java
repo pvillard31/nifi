@@ -66,7 +66,7 @@ public class ListenSNMPTest {
 
         runner.assertValid();
 
-        runner.run(2, true, true, 1000);
+        runner.run(2, true, true, 10000);
         sendSnmpV1V2Trap(SnmpConstants.version1);
 
         final MockFlowFile successFF = runner.getFlowFilesForRelationship(ListenSNMP.REL_SUCCESS).get(0);

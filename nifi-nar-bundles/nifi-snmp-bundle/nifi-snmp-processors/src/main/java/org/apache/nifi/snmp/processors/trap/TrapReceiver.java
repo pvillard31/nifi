@@ -86,60 +86,52 @@ public class TrapReceiver implements CommandResponder, Runnable {
 
         // add message processing models
         switch (snmpVersion) {
+            case "SNMPv2c":
+                mtDispatcher.addMessageProcessingModel(new MPv2c());
+                break;
 
-        case "SNMPv2c":
-            mtDispatcher.addMessageProcessingModel(new MPv2c());
-            break;
+            case "SNMPv3":
+                // initialize security protocols
+                SecurityProtocols sp = SecurityProtocols.getInstance();
+                sp.addDefaultProtocols();
 
-        case "SNMPv3":
-            // initialize security protocols
-            SecurityProtocols sp = SecurityProtocols.getInstance();
-            sp.addDefaultProtocols();
+                // add all security protocols
+                if(snmpPrivProtocol != null) {
+                    SecurityProtocols.getInstance().addPrivacyProtocol(getPriv(snmpPrivProtocol));
+                }
 
-            // add all security protocols
-            if(snmpPrivProtocol != null) {
-                SecurityProtocols.getInstance().addPrivacyProtocol(getPriv(snmpPrivProtocol));
-            }
+                if(snmpAuthProtocol != null) {
+                    SecurityProtocols.getInstance().addAuthenticationProtocol(getAuth(snmpAuthProtocol));
+                }
 
-            if(snmpAuthProtocol != null) {
-                SecurityProtocols.getInstance().addAuthenticationProtocol(getAuth(snmpAuthProtocol));
-            }
+                // initialize USM
+                USM usm = new USM(sp, new OctetString(MPv3.createLocalEngineID()), 0);
+                usm.setEngineDiscoveryEnabled(true);
 
-            // initialize USM
-            USM usm = new USM(sp, new OctetString(MPv3.createLocalEngineID()), 0);
-            usm.setEngineDiscoveryEnabled(true);
+                // add security model
+                SecurityModels.getInstance().addSecurityModel(usm);
 
-            // add security model
-            SecurityModels.getInstance().addSecurityModel(usm);
+                OctetString aPwd = snmpAuthPassword != null ? new OctetString(snmpAuthPassword) : null;
+                OctetString pPwd = snmpPrivPassword != null ? new OctetString(snmpPrivPassword) : null;
 
-            OctetString aPwd = snmpAuthPassword != null ? new OctetString(snmpAuthPassword) : null;
-            OctetString pPwd = snmpPrivPassword != null ? new OctetString(snmpPrivPassword) : null;
+                // add user information
+                usm.addUser(new OctetString(snmpSecurityName),
+                        new UsmUser(new OctetString(snmpSecurityName), SNMPUtils.getAuth(snmpAuthProtocol), aPwd,
+                                SNMPUtils.getPriv(snmpPrivProtocol), pPwd));
 
-            // add user information
-            usm.addUser(new OctetString(snmpSecurityName),
-                    new UsmUser(new OctetString(snmpSecurityName), SNMPUtils.getAuth(snmpAuthProtocol), aPwd,
-                            SNMPUtils.getPriv(snmpPrivProtocol), pPwd));
+                mtDispatcher.addMessageProcessingModel(new MPv3(usm));
+                break;
 
-            mtDispatcher.addMessageProcessingModel(new MPv3(usm));
-            break;
-
-        case "SNMPv1":
-        default:
-            mtDispatcher.addMessageProcessingModel(new MPv1());
-            break;
-
+            case "SNMPv1":
+            default:
+                mtDispatcher.addMessageProcessingModel(new MPv1());
+                break;
         }
 
         Snmp snmp = new Snmp(mtDispatcher, transport);
         snmp.addCommandResponder(this);
 
         transport.listen();
-
-        try {
-            this.wait();
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     /**

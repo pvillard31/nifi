@@ -222,10 +222,16 @@ public class ListenSNMP extends AbstractProcessor {
         listenerThread.setName("ListenSNMP [" + getIdentifier() + "]");
         listenerThread.setDaemon(true);
         listenerThread.start();
+
+        try {
+            receiver.wait();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @OnUnscheduled
-    public void stop() {
+    public void onUnscheduled() {
         if(receiver != null) {
             receiver.notify();
         }

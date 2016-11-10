@@ -14,3 +14,4 @@
 # limitations under the License.
 org.apache.nifi.snmp.processors.GetSNMP
 org.apache.nifi.snmp.processors.SetSNMP
+org.apache.nifi.snmp.processors.trap.ListenSNMP
