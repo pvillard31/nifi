@@ -20,20 +20,22 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.logging.LogLevel;
 import org.apache.nifi.logging.LogRepository;
 import org.apache.nifi.logging.LogRepositoryFactory;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 public class SimpleProcessLogger implements ComponentLog {
 
     private final Logger logger;
     private final LogRepository logRepository;
     private final Object component;
+    private final String componentId;
 
     public SimpleProcessLogger(final String componentId, final Object component) {
         this.logger = LoggerFactory.getLogger(component.getClass());
         this.logRepository = LogRepositoryFactory.getRepository(componentId);
         this.component = component;
+        this.componentId = componentId;
     }
 
     private Object[] addProcessor(final Object[] originalArgs) {
@@ -67,10 +69,12 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component, t.toString(), t};
         logger.warn(msg, os);
         logRepository.addLogMessage(LogLevel.WARN, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -79,6 +83,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         if (lastArgIsException(os)) {
             warn(msg, translateException(os), (Throwable) os[os.length - 1]);
         } else {
@@ -87,6 +92,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.warn(msg, os);
             logRepository.addLogMessage(LogLevel.WARN, msg, os);
         }
+        MDC.remove("componentId");
     }
 
     @Override
@@ -95,6 +101,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessorAndThrowable(os, t);
         msg = "{} " + msg + ": {}";
 
@@ -103,6 +110,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.warn("", t);
         }
         logRepository.addLogMessage(LogLevel.WARN, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -111,10 +119,12 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component};
         logger.warn(msg, component);
         logRepository.addLogMessage(LogLevel.WARN, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -123,10 +133,12 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component, t.toString(), t};
         logger.trace(msg, os);
         logRepository.addLogMessage(LogLevel.TRACE, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -135,10 +147,12 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         os = addProcessor(os);
         logger.trace(msg, os);
         logRepository.addLogMessage(LogLevel.TRACE, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -147,10 +161,12 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component};
         logger.trace(msg, os);
         logRepository.addLogMessage(LogLevel.TRACE, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -159,12 +175,14 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessorAndThrowable(os, t);
         msg = "{} " + msg + ": {}";
 
         logger.trace(msg, os);
         logger.trace("", t);
         logRepository.addLogMessage(LogLevel.TRACE, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -198,6 +216,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component, t.toString()};
 
@@ -206,6 +225,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.info("", t);
         }
         logRepository.addLogMessage(LogLevel.INFO, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -214,11 +234,13 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         os = addProcessor(os);
 
         logger.info(msg, os);
         logRepository.addLogMessage(LogLevel.INFO, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -227,11 +249,13 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component};
 
         logger.info(msg, os);
         logRepository.addLogMessage(LogLevel.INFO, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -240,6 +264,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessorAndThrowable(os, t);
         msg = "{} " + msg + ": {}";
 
@@ -248,6 +273,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.info("", t);
         }
         logRepository.addLogMessage(LogLevel.INFO, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -261,6 +287,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         Object[] os = t == null ? new Object[]{component} : new Object[]{component, t.toString()};
         logger.error(msg, os);
@@ -270,6 +297,7 @@ public class SimpleProcessLogger implements ComponentLog {
         } else {
             logRepository.addLogMessage(LogLevel.ERROR, msg, os);
         }
+        MDC.remove("componentId");
     }
 
     @Override
@@ -278,6 +306,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         if (lastArgIsException(os)) {
             error(msg, translateException(os), (Throwable) os[os.length - 1]);
         } else {
@@ -286,6 +315,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.error(msg, os);
             logRepository.addLogMessage(LogLevel.ERROR, msg, os);
         }
+        MDC.remove("componentId");
     }
 
     @Override
@@ -299,12 +329,14 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessorAndThrowable(os, t);
         msg = "{} " + msg + ": {}";
 
         logger.error(msg, os);
         logger.error("", t);
         logRepository.addLogMessage(LogLevel.ERROR, msg, os, t);
+        MDC.remove("componentId");
     }
 
     private Object[] addProcessorAndThrowable(final Object[] os, final Throwable t) {
@@ -324,11 +356,13 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component};
 
         logger.debug(msg, os, t);
         logRepository.addLogMessage(LogLevel.DEBUG, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -337,11 +371,13 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessor(os);
         msg = "{} " + msg;
 
         logger.debug(msg, os);
         logRepository.addLogMessage(LogLevel.DEBUG, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -350,6 +386,7 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         os = addProcessorAndThrowable(os, t);
         msg = "{} " + msg + ": {}";
 
@@ -358,6 +395,7 @@ public class SimpleProcessLogger implements ComponentLog {
             logger.debug("", t);
         }
         logRepository.addLogMessage(LogLevel.DEBUG, msg, os, t);
+        MDC.remove("componentId");
     }
 
     @Override
@@ -366,11 +404,13 @@ public class SimpleProcessLogger implements ComponentLog {
             return;
         }
 
+        MDC.put("componentId", componentId);
         msg = "{} " + msg;
         final Object[] os = {component};
 
         logger.debug(msg, os);
         logRepository.addLogMessage(LogLevel.DEBUG, msg, os);
+        MDC.remove("componentId");
     }
 
     @Override
