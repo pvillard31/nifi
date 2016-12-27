@@ -16,7 +16,35 @@
  */
 package org.apache.nifi.controller;
 
-import com.sun.jersey.api.client.ClientHandlerException;
+import static java.util.Objects.requireNonNull;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import javax.net.ssl.SSLContext;
+
 import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
@@ -208,33 +236,7 @@ import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import static java.util.Objects.requireNonNull;
+import com.sun.jersey.api.client.ClientHandlerException;
 
 public class FlowController implements EventAccess, ControllerServiceProvider, ReportingTaskProvider, QueueProvider, Authorizable, ProvenanceAuthorizableFactory, NodeTypeProvider {
 
@@ -1009,13 +1011,31 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
      *
      * @param type processor type
      * @param id processor id
+     * @param pgId parent process group ID
+     * @return new processor
+     * @throws NullPointerException if either arg is null
+     * @throws ProcessorInstantiationException if the processor cannot be
+     * instantiated for any reason
+     */
+    public ProcessorNode createProcessor(final String type, final String id, final String pgId) throws ProcessorInstantiationException {
+        return createProcessor(type, id, pgId, true);
+    }
+
+    /**
+     * <p>
+     * Creates a new ProcessorNode with the given type and identifier and
+     * initializes it invoking the methods annotated with {@link OnAdded}.
+     * </p>
+     *
+     * @param type processor type
+     * @param id processor id
      * @return new processor
      * @throws NullPointerException if either arg is null
      * @throws ProcessorInstantiationException if the processor cannot be
      * instantiated for any reason
      */
     public ProcessorNode createProcessor(final String type, final String id) throws ProcessorInstantiationException {
-        return createProcessor(type, id, true);
+        return createProcessor(type, id, null, true);
     }
 
     /**
@@ -1035,12 +1055,33 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
      * instantiated for any reason
      */
     public ProcessorNode createProcessor(final String type, String id, final boolean firstTimeAdded) throws ProcessorInstantiationException {
+        return this.createProcessor(type, id, null, firstTimeAdded);
+    }
+
+    /**
+     * <p>
+     * Creates a new ProcessorNode with the given type and identifier and
+     * optionally initializes it.
+     * </p>
+     *
+     * @param type the fully qualified Processor class name
+     * @param id the unique ID of the Processor
+     * @param id of the parent process group of the Processor
+     * @param firstTimeAdded whether or not this is the first time this
+     * Processor is added to the graph. If {@code true}, will invoke methods
+     * annotated with the {@link OnAdded} annotation.
+     * @return new processor node
+     * @throws NullPointerException if either arg is null
+     * @throws ProcessorInstantiationException if the processor cannot be
+     * instantiated for any reason
+     */
+    public ProcessorNode createProcessor(final String type, String id, final String pgId, final boolean firstTimeAdded) throws ProcessorInstantiationException {
         id = id.intern();
 
         boolean creationSuccessful;
         Processor processor;
         try {
-            processor = instantiateProcessor(type, id);
+            processor = instantiateProcessor(type, id, pgId);
             creationSuccessful = true;
         } catch (final ProcessorInstantiationException pie) {
             LOG.error("Could not create Processor of type " + type + " for ID " + id + "; creating \"Ghost\" implementation", pie);
@@ -1051,7 +1092,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             creationSuccessful = false;
         }
 
-        final ComponentLog logger = new SimpleProcessLogger(id, processor);
+        final ComponentLog logger = new SimpleProcessLogger(id, pgId, processor);
         final ValidationContextFactory validationContextFactory = new StandardValidationContextFactory(controllerServiceProvider, variableRegistry);
         final ProcessorNode procNode;
         if (creationSuccessful) {
@@ -1109,7 +1150,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
         return procNode;
     }
 
-    private Processor instantiateProcessor(final String type, final String identifier) throws ProcessorInstantiationException {
+    private Processor instantiateProcessor(final String type, final String identifier, final String pgId) throws ProcessorInstantiationException {
         Processor processor;
 
         final ClassLoader ctxClassLoader = Thread.currentThread().getContextClassLoader();
@@ -1127,7 +1168,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             Thread.currentThread().setContextClassLoader(detectedClassLoaderForType);
             final Class<? extends Processor> processorClass = rawClass.asSubclass(Processor.class);
             processor = processorClass.newInstance();
-            final ComponentLog componentLogger = new SimpleProcessLogger(identifier, processor);
+            final ComponentLog componentLogger = new SimpleProcessLogger(identifier, pgId, processor);
             final ProcessorInitializationContext ctx = new StandardProcessorInitializationContext(identifier, componentLogger, this, this, nifiProperties);
             processor.initialize(ctx);
 
@@ -1714,7 +1755,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
             // Instantiate the processors
             //
             for (final ProcessorDTO processorDTO : dto.getProcessors()) {
-                final ProcessorNode procNode = createProcessor(processorDTO.getType(), processorDTO.getId());
+                final ProcessorNode procNode = createProcessor(processorDTO.getType(), processorDTO.getId(), group.getIdentifier());
 
                 procNode.setPosition(toPosition(processorDTO.getPosition()));
                 procNode.setProcessGroup(group);
@@ -2985,6 +3026,11 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
 
     @Override
     public ControllerServiceNode createControllerService(final String type, final String id, final boolean firstTimeAdded) {
+        return createControllerService(type, id, null,firstTimeAdded);
+    }
+
+    @Override
+    public ControllerServiceNode createControllerService(final String type, final String id, final String pgId, final boolean firstTimeAdded) {
         final ControllerServiceNode serviceNode = controllerServiceProvider.createControllerService(type, id, firstTimeAdded);
 
         // Register log observer to provide bulletins when reporting task logs anything at WARN level or above

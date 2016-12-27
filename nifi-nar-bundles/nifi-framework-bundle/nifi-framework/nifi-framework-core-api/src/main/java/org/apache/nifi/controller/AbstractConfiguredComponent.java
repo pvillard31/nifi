@@ -16,20 +16,6 @@
  */
 package org.apache.nifi.controller;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.nifi.attribute.expression.language.StandardPropertyValue;
-import org.apache.nifi.components.ConfigurableComponent;
-import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.components.ValidationContext;
-import org.apache.nifi.components.ValidationResult;
-import org.apache.nifi.controller.service.ControllerServiceNode;
-import org.apache.nifi.controller.service.ControllerServiceProvider;
-import org.apache.nifi.logging.ComponentLog;
-import org.apache.nifi.nar.InstanceClassLoader;
-import org.apache.nifi.nar.NarCloseable;
-import org.apache.nifi.registry.VariableRegistry;
-import org.apache.nifi.util.file.classloader.ClassLoaderUtils;
-
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -46,6 +32,20 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.attribute.expression.language.StandardPropertyValue;
+import org.apache.nifi.components.ConfigurableComponent;
+import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.ValidationContext;
+import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.controller.service.ControllerServiceNode;
+import org.apache.nifi.controller.service.ControllerServiceProvider;
+import org.apache.nifi.logging.ComponentLog;
+import org.apache.nifi.nar.InstanceClassLoader;
+import org.apache.nifi.nar.NarCloseable;
+import org.apache.nifi.registry.VariableRegistry;
+import org.apache.nifi.util.file.classloader.ClassLoaderUtils;
 
 public abstract class AbstractConfiguredComponent implements ConfigurableComponent, ConfiguredComponent {
 
@@ -405,6 +405,10 @@ public abstract class AbstractConfiguredComponent implements ConfigurableCompone
 
     protected VariableRegistry getVariableRegistry() {
         return this.variableRegistry;
+    }
+
+    protected ComponentLog getLogger() {
+        return this.logger;
     }
 
 }

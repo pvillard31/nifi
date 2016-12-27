@@ -17,6 +17,7 @@
 package org.apache.nifi.util;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.logging.LogLevel;
@@ -397,6 +398,11 @@ public class MockComponentLog implements ComponentLog {
                 warn(msg, os, t);
                 break;
         }
+    }
+
+    @Override
+    public Map<String, String> getMDCProperties() {
+        return null;
     }
 
 }

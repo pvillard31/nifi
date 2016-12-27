@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.documentation.mock;
 
+import java.util.Map;
+
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.logging.LogLevel;
 import org.slf4j.Logger;
@@ -254,5 +256,10 @@ public class MockComponentLogger implements ComponentLog {
                 warn(msg, os, t);
                 break;
         }
+    }
+
+    @Override
+    public Map<String, String> getMDCProperties() {
+        return null;
     }
 }

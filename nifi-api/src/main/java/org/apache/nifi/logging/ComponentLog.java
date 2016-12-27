@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.logging;
 
+import java.util.Map;
+
 /**
  * <p>
  * The ComponentLog provides a mechanism to ensure that all NiFi components are
@@ -85,6 +87,8 @@ public interface ComponentLog {
     void info(String msg, Object[] os, Throwable t);
 
     String getName();
+
+    Map<String, String> getMDCProperties();
 
     void error(String msg, Throwable t);
 

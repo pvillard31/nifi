@@ -16,6 +16,16 @@
  */
 package org.apache.nifi.web.dao.impl;
 
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateMap;
@@ -30,8 +40,8 @@ import org.apache.nifi.controller.exception.ValidationException;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.logging.LogLevel;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.scheduling.SchedulingStrategy;
 import org.apache.nifi.scheduling.ExecutionNode;
+import org.apache.nifi.scheduling.SchedulingStrategy;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.web.NiFiCoreException;
 import org.apache.nifi.web.ResourceNotFoundException;
@@ -42,16 +52,6 @@ import org.apache.nifi.web.dao.ProcessorDAO;
 import org.quartz.CronExpression;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
 
 public class StandardProcessorDAO extends ComponentDAO implements ProcessorDAO {
 
@@ -92,7 +92,7 @@ public class StandardProcessorDAO extends ComponentDAO implements ProcessorDAO {
 
         try {
             // attempt to create the processor
-            ProcessorNode processor = flowController.createProcessor(processorDTO.getType(), processorDTO.getId());
+            ProcessorNode processor = flowController.createProcessor(processorDTO.getType(), processorDTO.getId(), group.getIdentifier());
 
             // ensure we can perform the update before we add the processor to the flow
             verifyUpdate(processor, processorDTO);

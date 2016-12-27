@@ -56,7 +56,6 @@ import org.apache.nifi.nar.NarCloseable;
 import org.apache.nifi.processor.SimpleProcessLogger;
 import org.apache.nifi.processor.StandardValidationContextFactory;
 import org.apache.nifi.registry.VariableRegistry;
-
 import org.apache.nifi.reporting.BulletinRepository;
 import org.apache.nifi.reporting.Severity;
 import org.apache.nifi.util.NiFiProperties;
@@ -125,6 +124,11 @@ public class StandardControllerServiceProvider implements ControllerServiceProvi
 
     @Override
     public ControllerServiceNode createControllerService(final String type, final String id, final boolean firstTimeAdded) {
+        return createControllerService(type, id, null, firstTimeAdded);
+    }
+
+    @Override
+    public ControllerServiceNode createControllerService(final String type, final String id, final String pgId, final boolean firstTimeAdded) {
         if (type == null || id == null) {
             throw new NullPointerException();
         }
@@ -144,7 +148,7 @@ public class StandardControllerServiceProvider implements ControllerServiceProvi
             } catch (final Exception e) {
                 logger.error("Could not create Controller Service of type " + type + " for ID " + id + "; creating \"Ghost\" implementation", e);
                 Thread.currentThread().setContextClassLoader(currentContextClassLoader);
-                return createGhostControllerService(type, id);
+                return createGhostControllerService(type, id, pgId);
             }
 
             final Class<? extends ControllerService> controllerServiceClass = rawClass.asSubclass(ControllerService.class);
@@ -191,10 +195,10 @@ public class StandardControllerServiceProvider implements ControllerServiceProvi
             }
             logger.info("Created Controller Service of type {} with identifier {}", type, id);
 
-            final ComponentLog serviceLogger = new SimpleProcessLogger(id, originalService);
+            final ComponentLog serviceLogger = new SimpleProcessLogger(id, pgId, originalService);
             originalService.initialize(new StandardControllerServiceInitializationContext(id, serviceLogger, this, getStateManager(id), nifiProperties));
 
-            final ComponentLog logger = new SimpleProcessLogger(id, originalService);
+            final ComponentLog logger = new SimpleProcessLogger(id, pgId, originalService);
             final ValidationContextFactory validationContextFactory = new StandardValidationContextFactory(this, variableRegistry);
 
             final ControllerServiceNode serviceNode = new StandardControllerServiceNode(proxiedService, originalService, id, validationContextFactory, this, variableRegistry, logger);
@@ -219,7 +223,7 @@ public class StandardControllerServiceProvider implements ControllerServiceProvi
         }
     }
 
-    private ControllerServiceNode createGhostControllerService(final String type, final String id) {
+    private ControllerServiceNode createGhostControllerService(final String type, final String id, final String pgId) {
         final InvocationHandler invocationHandler = new InvocationHandler() {
             @Override
             public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
@@ -265,7 +269,7 @@ public class StandardControllerServiceProvider implements ControllerServiceProvi
         final String simpleClassName = type.contains(".") ? StringUtils.substringAfterLast(type, ".") : type;
         final String componentType = "(Missing) " + simpleClassName;
 
-        final ComponentLog logger = new SimpleProcessLogger(id, proxiedService);
+        final ComponentLog logger = new SimpleProcessLogger(id, pgId, proxiedService);
 
         final ControllerServiceNode serviceNode = new StandardControllerServiceNode(proxiedService, proxiedService, id,
                 new StandardValidationContextFactory(this, variableRegistry), this, componentType, type, variableRegistry, logger);

@@ -42,6 +42,19 @@ public interface ControllerServiceProvider extends ControllerServiceLookup {
     ControllerServiceNode createControllerService(String type, String id, boolean firstTimeAdded);
 
     /**
+     * Creates a new Controller Service of the specified type and assigns it the
+     * given id. If <code>firstTimeadded</code> is true, calls any methods that
+     * are annotated with {@link OnAdded}
+     *
+     * @param type of service
+     * @param id of service
+     * @param pgId of parent process group of the service
+     * @param firstTimeAdded for service
+     * @return the service node
+     */
+    ControllerServiceNode createControllerService(String type, String id, String pgId, boolean firstTimeAdded);
+
+    /**
      * @param id of the service
      * @return the controller service node for the specified identifier. Returns
      * <code>null</code> if the identifier does not match a known service
