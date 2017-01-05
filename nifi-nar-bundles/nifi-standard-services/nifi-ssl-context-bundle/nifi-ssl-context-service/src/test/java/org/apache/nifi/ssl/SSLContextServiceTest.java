@@ -17,6 +17,7 @@
 package org.apache.nifi.ssl;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,20 +35,17 @@ import org.apache.nifi.util.MockValidationContext;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SSLContextServiceTest {
+    private static final Logger logger = LoggerFactory.getLogger(SSLContextServiceTest.class);
 
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder(new File("src/test/resources"));
-
-    @Before
-    public void setUp() {
-        // tmp.delete();
-    }
 
     @Test
     public void testBad1() throws InitializationException {
@@ -194,10 +192,13 @@ public class SSLContextServiceTest {
         runner.setProperty("SSL Context Svc ID", serviceIdentifier);
         runner.assertValid(service);
 
+        final StandardSSLContextService sslContextService = (StandardSSLContextService) service;
+
         // Act
         boolean isDeleted = tmpKeystore.delete();
         assert isDeleted;
         assert !tmpKeystore.exists();
+        logger.info("Deleted keystore file");
 
         // Manually validate the service (expecting cached result to be returned)
         final MockProcessContext processContext = (MockProcessContext) runner.getProcessContext();
@@ -205,17 +206,22 @@ public class SSLContextServiceTest {
         final ValidationContext validationContext = new MockValidationContext(processContext, null, null);
 
         // Even though the keystore file is no longer present, because no property changed, the cached result is still valid
-        final Collection<ValidationResult> validationResults = ((StandardSSLContextService) service).customValidate(validationContext);
-        assertFalse("validation results is empty", validationResults.isEmpty());
+        Collection<ValidationResult> validationResults = sslContextService.customValidate(validationContext);
+        assertTrue("validation results is not empty", validationResults.isEmpty());
+        logger.info("(1) StandardSSLContextService#customValidate() returned true even though the keystore file is no longer available");
 
         // Assert
 
         // Have to exhaust the cached result by checking n-1 more times
-        // for (int i = 0; i < service.getValidationCacheCount(); i++) {
-        //     runner.assertValid(service);
-        // }
-        //
-        //
+        for (int i = 2; i < sslContextService.getValidationCacheExpiration(); i++) {
+            validationResults = sslContextService.customValidate(validationContext);
+            assertTrue("validation results is not empty", validationResults.isEmpty());
+            logger.info("(" + i + ") StandardSSLContextService#customValidate() returned true even though the keystore file is no longer available");
+        }
+
+        validationResults = sslContextService.customValidate(validationContext);
+        assertFalse("validation results is empty", validationResults.isEmpty());
+        logger.info("(" + sslContextService.getValidationCacheExpiration() + ") StandardSSLContextService#customValidate() returned false because the cache expired");
     }
 
     @Test
@@ -233,7 +239,7 @@ public class SSLContextServiceTest {
             runner.setProperty("SSL Context Svc ID", "test-good2");
             runner.assertValid();
             Assert.assertNotNull(service);
-            Assert.assertTrue(service instanceof StandardSSLContextService);
+            assertTrue(service instanceof StandardSSLContextService);
             service.createSSLContext(ClientAuth.NONE);
         } catch (InitializationException e) {
         }
@@ -254,7 +260,7 @@ public class SSLContextServiceTest {
             runner.setProperty("SSL Context Svc ID", "test-good3");
             runner.assertValid();
             Assert.assertNotNull(service);
-            Assert.assertTrue(service instanceof StandardSSLContextService);
+            assertTrue(service instanceof StandardSSLContextService);
             SSLContextService sslService = service;
             sslService.createSSLContext(ClientAuth.NONE);
         } catch (Exception e) {
@@ -279,7 +285,7 @@ public class SSLContextServiceTest {
             runner.setProperty("SSL Context Svc ID", "test-diff-keys");
             runner.assertValid();
             Assert.assertNotNull(service);
-            Assert.assertTrue(service instanceof StandardSSLContextService);
+            assertTrue(service instanceof StandardSSLContextService);
             SSLContextService sslService = service;
             sslService.createSSLContext(ClientAuth.NONE);
         } catch (Exception e) {
