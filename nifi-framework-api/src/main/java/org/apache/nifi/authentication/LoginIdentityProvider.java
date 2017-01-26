@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.authentication;
 
+import java.util.List;
+
 import org.apache.nifi.authentication.exception.IdentityAccessException;
 import org.apache.nifi.authentication.exception.InvalidLoginCredentialsException;
 import org.apache.nifi.authentication.exception.ProviderCreationException;
@@ -58,4 +60,15 @@ public interface LoginIdentityProvider {
      * @throws ProviderDestructionException If pre-destruction fails.
      */
     void preDestruction() throws ProviderDestructionException;
+
+    /**
+     * Called when listing users and groups in IdentityProvider
+     *
+     * @param users users to list
+     * @param groups groups to list
+     * @return list of authentication identities
+     * @throws IdentityAccessException Unable to perform the operation due to an issue accessing the underlying storage
+     */
+    List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException;
+
 }

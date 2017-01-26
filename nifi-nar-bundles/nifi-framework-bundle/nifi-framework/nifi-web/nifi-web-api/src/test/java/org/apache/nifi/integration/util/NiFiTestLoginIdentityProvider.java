@@ -16,6 +16,12 @@
  */
 package org.apache.nifi.integration.util;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.nifi.authentication.AuthenticationIdentity;
 import org.apache.nifi.authentication.AuthenticationResponse;
 import org.apache.nifi.authentication.LoginCredentials;
 import org.apache.nifi.authentication.LoginIdentityProvider;
@@ -24,10 +30,6 @@ import org.apache.nifi.authentication.LoginIdentityProviderInitializationContext
 import org.apache.nifi.authentication.exception.IdentityAccessException;
 import org.apache.nifi.authentication.exception.InvalidLoginCredentialsException;
 import org.apache.nifi.authentication.exception.ProviderCreationException;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  *
@@ -71,6 +73,11 @@ public class NiFiTestLoginIdentityProvider implements LoginIdentityProvider {
 
     @Override
     public void preDestruction() {
+    }
+
+    @Override
+    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+        return null;
     }
 
 }

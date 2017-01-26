@@ -23,7 +23,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
 import javax.xml.XMLConstants;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBElement;
@@ -32,7 +34,9 @@ import javax.xml.bind.Unmarshaller;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authentication.AuthenticationIdentity;
 import org.apache.nifi.authentication.AuthenticationResponse;
 import org.apache.nifi.authentication.LoginCredentials;
 import org.apache.nifi.authentication.LoginIdentityProvider;
@@ -40,6 +44,7 @@ import org.apache.nifi.authentication.LoginIdentityProviderConfigurationContext;
 import org.apache.nifi.authentication.LoginIdentityProviderInitializationContext;
 import org.apache.nifi.authentication.LoginIdentityProviderLookup;
 import org.apache.nifi.authentication.annotation.LoginIdentityProviderContext;
+import org.apache.nifi.authentication.exception.IdentityAccessException;
 import org.apache.nifi.authentication.exception.ProviderCreationException;
 import org.apache.nifi.authentication.exception.ProviderDestructionException;
 import org.apache.nifi.authentication.generated.LoginIdentityProviders;
@@ -320,6 +325,13 @@ public class LoginIdentityProviderFactoryBean implements FactoryBean, Disposable
             public void preDestruction() throws ProviderDestructionException {
                 try (final NarCloseable narCloseable = NarCloseable.withNarLoader()) {
                     baseProvider.preDestruction();
+                }
+            }
+
+            @Override
+            public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+                try (final NarCloseable narCloseable = NarCloseable.withNarLoader()) {
+                    return baseProvider.listIdentities(users, groups);
                 }
             }
         };

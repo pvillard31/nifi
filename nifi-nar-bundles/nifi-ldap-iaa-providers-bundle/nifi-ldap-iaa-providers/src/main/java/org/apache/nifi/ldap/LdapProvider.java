@@ -16,7 +16,22 @@
  */
 package org.apache.nifi.ldap;
 
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import javax.naming.Context;
+import javax.net.ssl.SSLContext;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authentication.AuthenticationIdentity;
 import org.apache.nifi.authentication.AuthenticationResponse;
 import org.apache.nifi.authentication.LoginCredentials;
 import org.apache.nifi.authentication.LoginIdentityProvider;
@@ -32,6 +47,7 @@ import org.apache.nifi.util.FormatUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ldap.AuthenticationException;
+import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.AbstractTlsDirContextAuthenticationStrategy;
 import org.springframework.ldap.core.support.DefaultTlsDirContextAuthenticationStrategy;
 import org.springframework.ldap.core.support.LdapContextSource;
@@ -47,18 +63,6 @@ import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
 import org.springframework.security.ldap.search.LdapUserSearch;
 import org.springframework.security.ldap.userdetails.LdapUserDetails;
 
-import javax.naming.Context;
-import javax.net.ssl.SSLContext;
-import java.io.IOException;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.CertificateException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 /**
  * Abstract LDAP based implementation of a login identity provider.
  */
@@ -67,6 +71,7 @@ public class LdapProvider implements LoginIdentityProvider {
     private static final Logger logger = LoggerFactory.getLogger(LdapProvider.class);
 
     private AbstractLdapAuthenticationProvider provider;
+    private LdapTemplate ldapTemplate;
     private String issuer;
     private long expiration;
     private IdentityStrategy identityStrategy;
@@ -230,6 +235,7 @@ public class LdapProvider implements LoginIdentityProvider {
 
         // create the underlying provider
         provider = new LdapAuthenticationProvider(authenticator);
+        ldapTemplate = new LdapTemplate(context);
     }
 
     private void setTimeout(final LoginIdentityProviderConfigurationContext configurationContext,
@@ -343,6 +349,12 @@ public class LdapProvider implements LoginIdentityProvider {
 
     @Override
     public final void preDestruction() throws ProviderDestructionException {
+    }
+
+    @Override
+    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+        LdapTemplate ldapTemplate = new LdapTemplate(contextSource);
+        return null;
     }
 
 }

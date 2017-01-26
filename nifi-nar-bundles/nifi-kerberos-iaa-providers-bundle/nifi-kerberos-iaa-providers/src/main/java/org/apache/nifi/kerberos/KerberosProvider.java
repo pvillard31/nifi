@@ -16,7 +16,11 @@
  */
 package org.apache.nifi.kerberos;
 
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authentication.AuthenticationIdentity;
 import org.apache.nifi.authentication.AuthenticationResponse;
 import org.apache.nifi.authentication.LoginCredentials;
 import org.apache.nifi.authentication.LoginIdentityProvider;
@@ -34,8 +38,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.kerberos.authentication.KerberosAuthenticationProvider;
 import org.springframework.security.kerberos.authentication.sun.SunJaasKerberosClient;
-
-import java.util.concurrent.TimeUnit;
 
 /**
  * Kerberos-based implementation of a login identity provider.
@@ -96,6 +98,11 @@ public class KerberosProvider implements LoginIdentityProvider {
 
     @Override
     public final void preDestruction() throws ProviderDestructionException {
+    }
+
+    @Override
+    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+        throw new UnsupportedOperationException("Unsupported operation with Kerberos-based identity provider.");
     }
 
 }

@@ -408,6 +408,7 @@
         <constructor-arg ref="clusterCoordinator"/>
         <constructor-arg ref="requestReplicator" />
         <constructor-arg ref="flowController" />
+        <constructor-arg ref="loginIdentityProvider"/>
     </bean>
 
     <!-- configuration for jaxb serialization -->

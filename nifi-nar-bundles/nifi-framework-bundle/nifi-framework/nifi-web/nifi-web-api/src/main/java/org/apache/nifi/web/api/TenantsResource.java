@@ -16,37 +16,11 @@
  */
 package org.apache.nifi.web.api;
 
-import com.wordnik.swagger.annotations.Api;
-import com.wordnik.swagger.annotations.ApiOperation;
-import com.wordnik.swagger.annotations.ApiParam;
-import com.wordnik.swagger.annotations.ApiResponse;
-import com.wordnik.swagger.annotations.ApiResponses;
-import com.wordnik.swagger.annotations.Authorization;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.nifi.authorization.AbstractPolicyBasedAuthorizer;
-import org.apache.nifi.authorization.Authorizer;
-import org.apache.nifi.authorization.RequestAction;
-import org.apache.nifi.authorization.resource.Authorizable;
-import org.apache.nifi.authorization.user.NiFiUserUtils;
-import org.apache.nifi.cluster.coordination.ClusterCoordinator;
-import org.apache.nifi.cluster.coordination.http.replication.RequestReplicator;
-import org.apache.nifi.controller.FlowController;
-import org.apache.nifi.util.NiFiProperties;
-import org.apache.nifi.web.NiFiServiceFacade;
-import org.apache.nifi.web.Revision;
-import org.apache.nifi.web.api.dto.RevisionDTO;
-import org.apache.nifi.web.api.dto.TenantDTO;
-import org.apache.nifi.web.api.dto.UserDTO;
-import org.apache.nifi.web.api.dto.UserGroupDTO;
-import org.apache.nifi.web.api.entity.TenantEntity;
-import org.apache.nifi.web.api.entity.TenantsEntity;
-import org.apache.nifi.web.api.entity.UserEntity;
-import org.apache.nifi.web.api.entity.UserGroupEntity;
-import org.apache.nifi.web.api.entity.UserGroupsEntity;
-import org.apache.nifi.web.api.entity.UsersEntity;
-import org.apache.nifi.web.api.request.ClientIdParameter;
-import org.apache.nifi.web.api.request.LongParameter;
-import org.apache.nifi.web.dao.AccessPolicyDAO;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -63,11 +37,41 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authentication.LoginIdentityProvider;
+import org.apache.nifi.authorization.AbstractPolicyBasedAuthorizer;
+import org.apache.nifi.authorization.Authorizer;
+import org.apache.nifi.authorization.RequestAction;
+import org.apache.nifi.authorization.resource.Authorizable;
+import org.apache.nifi.authorization.user.NiFiUserUtils;
+import org.apache.nifi.cluster.coordination.ClusterCoordinator;
+import org.apache.nifi.cluster.coordination.http.replication.RequestReplicator;
+import org.apache.nifi.controller.FlowController;
+import org.apache.nifi.util.NiFiProperties;
+import org.apache.nifi.web.NiFiServiceFacade;
+import org.apache.nifi.web.Revision;
+import org.apache.nifi.web.api.dto.RevisionDTO;
+import org.apache.nifi.web.api.dto.TenantDTO;
+import org.apache.nifi.web.api.dto.UserDTO;
+import org.apache.nifi.web.api.dto.UserGroupDTO;
+import org.apache.nifi.web.api.entity.SyncUsersGroupsEntity;
+import org.apache.nifi.web.api.entity.TenantEntity;
+import org.apache.nifi.web.api.entity.TenantsEntity;
+import org.apache.nifi.web.api.entity.UserEntity;
+import org.apache.nifi.web.api.entity.UserGroupEntity;
+import org.apache.nifi.web.api.entity.UserGroupsEntity;
+import org.apache.nifi.web.api.entity.UsersEntity;
+import org.apache.nifi.web.api.request.ClientIdParameter;
+import org.apache.nifi.web.api.request.LongParameter;
+import org.apache.nifi.web.dao.AccessPolicyDAO;
+
+import com.wordnik.swagger.annotations.Api;
+import com.wordnik.swagger.annotations.ApiOperation;
+import com.wordnik.swagger.annotations.ApiParam;
+import com.wordnik.swagger.annotations.ApiResponse;
+import com.wordnik.swagger.annotations.ApiResponses;
+import com.wordnik.swagger.annotations.Authorization;
 
 @Path("tenants")
 @Api(
@@ -78,9 +82,11 @@ public class TenantsResource extends ApplicationResource {
 
     private final NiFiServiceFacade serviceFacade;
     private final Authorizer authorizer;
+    private LoginIdentityProvider loginIdentityProvider;
 
     public TenantsResource(NiFiServiceFacade serviceFacade, Authorizer authorizer, NiFiProperties properties, RequestReplicator requestReplicator,
-        ClusterCoordinator clusterCoordinator, FlowController flowController) {
+        ClusterCoordinator clusterCoordinator, FlowController flowController, LoginIdentityProvider loginIdentityProvider) {
+        this.loginIdentityProvider = loginIdentityProvider;
         this.serviceFacade = serviceFacade;
         this.authorizer = authorizer;
         setProperties(properties);
@@ -966,4 +972,75 @@ public class TenantsResource extends ApplicationResource {
         // generate an 200 - OK response
         return noCache(Response.ok(results)).build();
     }
+
+    /**
+     * Sync users and groups with identity provider based on given parameters.
+     *
+     * @param httpServletRequest request
+     * @param requestSyncUsersGroupsEntity    A syncUsersGroupsEntity.
+     * @return Tenants match the specified criteria
+     */
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("sync-users-groups")
+    @ApiOperation(
+            value = "Synchronize users and groups with the identity provider",
+            notes = NON_GUARANTEED_ENDPOINT,
+            response = TenantsEntity.class,
+            authorizations = {
+                    @Authorization(value = "Write - /tenants", type = "")
+            }
+    )
+    @ApiResponses(
+            value = {
+                    @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(code = 401, message = "Client could not be authenticated."),
+                    @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
+                    @ApiResponse(code = 404, message = "The specified resource could not be found."),
+                    @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
+            }
+    )
+    public Response syncUsersGroups(
+            @Context final HttpServletRequest httpServletRequest,
+            @ApiParam(
+                    value = "Parameters used to synchronize users and groups.",
+                    required = true
+            ) final SyncUsersGroupsEntity requestSyncUsersGroupsEntity) {
+
+        // ensure we're running with a configurable authorizer
+        if (!(authorizer instanceof AbstractPolicyBasedAuthorizer)) {
+            throw new IllegalStateException(AccessPolicyDAO.MSG_NON_ABSTRACT_POLICY_BASED_AUTHORIZER);
+        }
+
+        if (requestSyncUsersGroupsEntity == null || requestSyncUsersGroupsEntity.getComponent() == null) {
+            throw new IllegalArgumentException("Users or groups to synchronize must be specified.");
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.POST, requestSyncUsersGroupsEntity);
+        }
+
+
+        // Extract the revision
+        final Revision requestRevision = getRevision(requestSyncUsersGroupsEntity, id);
+        return withWriteLock(
+                serviceFacade,
+                requestSyncUsersGroupsEntity,
+                requestRevision,
+                lookup -> {
+                    final Authorizable tenants = lookup.getTenant();
+                    tenants.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
+                },
+                null,
+                (revision, userGroupEntity) -> {
+                    // update the user group
+                    final UserGroupEntity entity = serviceFacade.updateUserGroup(revision, userGroupEntity.getComponent());
+                    populateRemainingUserGroupEntityContent(entity);
+
+                    return clusterContext(generateOkResponse(entity)).build();
+                }
+        );
+    }
+
 }
