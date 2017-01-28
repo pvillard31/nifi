@@ -59,6 +59,14 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
         </dependency>
+        
+        <dependency>
+			<groupId>commons-logging</groupId>
+			<artifactId>commons-logging</artifactId>
+			<version>1.2</version>
+			<scope>test</scope>
+        </dependency>
+        
     </dependencies>
     <name>nifi-ldap-iaa-providers</name>
 </project>

@@ -76,7 +76,7 @@ public class NiFiTestLoginIdentityProvider implements LoginIdentityProvider {
     }
 
     @Override
-    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+    public List<AuthenticationIdentity> listIdentities(String userSearchFilter, String groupSearchFilter) throws IdentityAccessException {
         return null;
     }
 

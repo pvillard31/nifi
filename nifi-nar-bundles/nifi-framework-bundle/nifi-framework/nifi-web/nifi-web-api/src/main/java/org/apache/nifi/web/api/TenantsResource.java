@@ -39,6 +39,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.authentication.AuthenticationIdentity;
 import org.apache.nifi.authentication.LoginIdentityProvider;
 import org.apache.nifi.authorization.AbstractPolicyBasedAuthorizer;
 import org.apache.nifi.authorization.Authorizer;
@@ -974,7 +975,7 @@ public class TenantsResource extends ApplicationResource {
     }
 
     /**
-     * Sync users and groups with identity provider based on given parameters.
+     * Get users and groups from identity provider based on given parameters.
      *
      * @param httpServletRequest request
      * @param requestSyncUsersGroupsEntity    A syncUsersGroupsEntity.
@@ -985,11 +986,11 @@ public class TenantsResource extends ApplicationResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Path("sync-users-groups")
     @ApiOperation(
-            value = "Synchronize users and groups with the identity provider",
+            value = "Get users and groups from the identity provider",
             notes = NON_GUARANTEED_ENDPOINT,
             response = TenantsEntity.class,
             authorizations = {
-                    @Authorization(value = "Write - /tenants", type = "")
+                    @Authorization(value = "Read - /tenants", type = "")
             }
     )
     @ApiResponses(
@@ -1004,7 +1005,7 @@ public class TenantsResource extends ApplicationResource {
     public Response syncUsersGroups(
             @Context final HttpServletRequest httpServletRequest,
             @ApiParam(
-                    value = "Parameters used to synchronize users and groups.",
+                    value = "Search filters used to get users and groups.",
                     required = true
             ) final SyncUsersGroupsEntity requestSyncUsersGroupsEntity) {
 
@@ -1014,33 +1015,114 @@ public class TenantsResource extends ApplicationResource {
         }
 
         if (requestSyncUsersGroupsEntity == null || requestSyncUsersGroupsEntity.getComponent() == null) {
-            throw new IllegalArgumentException("Users or groups to synchronize must be specified.");
+            throw new IllegalArgumentException("Search filters for users/groups to list must be specified.");
         }
 
         if (isReplicateRequest()) {
             return replicate(HttpMethod.POST, requestSyncUsersGroupsEntity);
         }
 
+        List<AuthenticationIdentity> usersToSync = this.loginIdentityProvider.listIdentities(requestSyncUsersGroupsEntity.getComponent().getUsersSearchFilter(),
+                requestSyncUsersGroupsEntity.getComponent().getGroupsSearchFilter());
 
-        // Extract the revision
-        final Revision requestRevision = getRevision(requestSyncUsersGroupsEntity, id);
-        return withWriteLock(
-                serviceFacade,
-                requestSyncUsersGroupsEntity,
-                requestRevision,
-                lookup -> {
-                    final Authorizable tenants = lookup.getTenant();
-                    tenants.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
-                },
-                null,
-                (revision, userGroupEntity) -> {
-                    // update the user group
-                    final UserGroupEntity entity = serviceFacade.updateUserGroup(revision, userGroupEntity.getComponent());
-                    populateRemainingUserGroupEntityContent(entity);
+        // at this point we have the list of users (and groups the users belong to) from the identity provider
+        // create the tenant entities to return
 
-                    return clusterContext(generateOkResponse(entity)).build();
+        final List<TenantEntity> tenantsToReturn = new ArrayList<>();
+
+        for(AuthenticationIdentity identity : usersToSync) {
+
+            final String username = identity.getUsername();
+            final List<String> groups = identity.getGroups();
+
+            boolean isExistingUser = false;
+            for (final UserEntity userEntity : serviceFacade.getUsers()) {
+                final UserDTO user = userEntity.getComponent();
+                if (StringUtils.containsIgnoreCase(user.getIdentity(), username)) {
+                    isExistingUser = true;
+
+                    final UserDTO tenant = new UserDTO();
+                    tenant.setId(user.getId());
+                    tenant.setIdentity(user.getIdentity());
+
+                    for(String group : groups) {
+                        final TenantEntity groupEntity = new TenantEntity();
+                        boolean isExistingGroup = false;
+                        for (final UserGroupEntity userGroupEntity : serviceFacade.getUserGroups()) {
+                            final UserGroupDTO userGroup = userGroupEntity.getComponent();
+                            if (StringUtils.containsIgnoreCase(userGroup.getIdentity(), group)) {
+                                final UserGroupDTO groupDto = new UserGroupDTO();
+                                groupDto.setId(groupDto.getId());
+                                groupDto.setIdentity(groupDto.getIdentity());
+                                groupEntity.setPermissions(userGroupEntity.getPermissions());
+                                groupEntity.setRevision(userGroupEntity.getRevision());
+                                groupEntity.setId(userGroupEntity.getId());
+                                groupEntity.setComponent(groupDto);
+                                isExistingGroup = true;
+                                break;
+                            }
+                        }
+                        if(!isExistingGroup) {
+                            final UserGroupDTO groupDto = new UserGroupDTO();
+                            groupDto.setIdentity(group);
+                            groupEntity.setComponent(groupDto);
+                        }
+                        tenant.getUserGroups().add(groupEntity);
+                    }
+
+                    final TenantEntity entity = new TenantEntity();
+                    entity.setPermissions(userEntity.getPermissions());
+                    entity.setRevision(userEntity.getRevision());
+                    entity.setId(userEntity.getId());
+                    entity.setComponent(tenant);
+                    tenantsToReturn.add(entity);
+                    break;
                 }
-        );
+            }
+
+            if(!isExistingUser) {
+
+                final UserDTO tenant = new UserDTO();
+                tenant.setIdentity(username);
+
+                for(String group : groups) {
+                    final TenantEntity groupEntity = new TenantEntity();
+                    boolean isExistingGroup = false;
+                    for (final UserGroupEntity userGroupEntity : serviceFacade.getUserGroups()) {
+                        final UserGroupDTO userGroup = userGroupEntity.getComponent();
+                        if (StringUtils.containsIgnoreCase(userGroup.getIdentity(), group)) {
+                            final UserGroupDTO groupDto = new UserGroupDTO();
+                            groupDto.setId(groupDto.getId());
+                            groupDto.setIdentity(groupDto.getIdentity());
+                            groupEntity.setPermissions(userGroupEntity.getPermissions());
+                            groupEntity.setRevision(userGroupEntity.getRevision());
+                            groupEntity.setId(userGroupEntity.getId());
+                            groupEntity.setComponent(groupDto);
+                            isExistingGroup = true;
+                            break;
+                        }
+                    }
+                    if(!isExistingGroup) {
+                        final UserGroupDTO groupDto = new UserGroupDTO();
+                        groupDto.setIdentity(group);
+                        groupEntity.setComponent(groupDto);
+                    }
+                    tenant.getUserGroups().add(groupEntity);
+                }
+
+                final TenantEntity entity = new TenantEntity();
+                entity.setComponent(tenant);
+                tenantsToReturn.add(entity);
+            }
+
+        }
+
+        // build the response
+        final TenantsEntity results = new TenantsEntity();
+        results.setUsers(tenantsToReturn);
+
+        // generate an 200 - OK response
+        return noCache(Response.ok(results)).build();
     }
 
 }

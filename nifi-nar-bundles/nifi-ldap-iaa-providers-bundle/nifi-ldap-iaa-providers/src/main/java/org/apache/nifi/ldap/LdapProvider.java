@@ -22,12 +22,17 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.naming.Context;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
 import javax.net.ssl.SSLContext;
 
 import org.apache.commons.lang3.StringUtils;
@@ -47,11 +52,18 @@ import org.apache.nifi.util.FormatUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ldap.AuthenticationException;
+import org.springframework.ldap.core.AttributesMapper;
+import org.springframework.ldap.core.DirContextAdapter;
+import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.ldap.core.LdapTemplate;
+import org.springframework.ldap.core.support.AbstractContextMapper;
 import org.springframework.ldap.core.support.AbstractTlsDirContextAuthenticationStrategy;
 import org.springframework.ldap.core.support.DefaultTlsDirContextAuthenticationStrategy;
 import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.ldap.core.support.SimpleDirContextAuthenticationStrategy;
+import org.springframework.ldap.filter.AndFilter;
+import org.springframework.ldap.filter.EqualsFilter;
+import org.springframework.ldap.filter.HardcodedFilter;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -70,6 +82,7 @@ public class LdapProvider implements LoginIdentityProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(LdapProvider.class);
 
+    private LoginIdentityProviderConfigurationContext configuration;
     private AbstractLdapAuthenticationProvider provider;
     private LdapTemplate ldapTemplate;
     private String issuer;
@@ -236,6 +249,7 @@ public class LdapProvider implements LoginIdentityProvider {
         // create the underlying provider
         provider = new LdapAuthenticationProvider(authenticator);
         ldapTemplate = new LdapTemplate(context);
+        configuration = configurationContext;
     }
 
     private void setTimeout(final LoginIdentityProviderConfigurationContext configurationContext,
@@ -352,9 +366,240 @@ public class LdapProvider implements LoginIdentityProvider {
     }
 
     @Override
-    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
-        LdapTemplate ldapTemplate = new LdapTemplate(contextSource);
-        return null;
+    public List<AuthenticationIdentity> listIdentities(String userSearchFilter, String groupSearchFilter) throws IdentityAccessException {
+
+        String userSearchBase = configuration.getProperty("User Search Base");
+        String userNameAttribute = configuration.getProperty("User name Attribute");
+        String userObjectClass = configuration.getProperty("User Object Class");
+        String userGroupNameAttribute = configuration.getProperty("User Group Name Attribute");
+
+        String groupSearchBase = configuration.getProperty("Group Search Base");
+        String groupMemberAttribute = configuration.getProperty("Group Member Attribute");
+        String groupNameAttribute = configuration.getProperty("Group Name Attribute");
+        String groupObjectClass = configuration.getProperty("Group Object Class");
+
+        // we look for users only if no filters are provided (meaning we look for everything), or if a filter is provided for users
+        boolean performUsersSearch = (userSearchFilter == null && groupSearchFilter == null) || userSearchFilter != null;
+
+        // we look for groups only if no filters are provided (meaning we look for everything), or if a filter is provided for groups
+        boolean performGroupsSearch = (userSearchFilter == null && groupSearchFilter == null) || groupSearchFilter != null;
+
+        // check required parameters
+        if(StringUtils.isBlank(userObjectClass) && StringUtils.isBlank(groupObjectClass)) {
+            throw new IdentityAccessException("One of User Object Class and Group Object Class is required in login identity provider configuration.");
+        }
+
+        // if user set parameters to search users, then...
+        if(!StringUtils.isBlank(userObjectClass)) {
+            // user name attribute is required
+            if(StringUtils.isBlank(userNameAttribute)) {
+                throw new IdentityAccessException("User name attribute is required in login identity provider configuration.");
+            }
+        }
+
+        // if user set parameters to search groups, then...
+        if(!StringUtils.isBlank(groupSearchBase)) {
+            // group name attribute is required
+            if(StringUtils.isBlank(groupObjectClass)) {
+                throw new IdentityAccessException("Group object class is required in login identity provider configuration when group search base is set.");
+            }
+            // group name attribute is required
+            if(StringUtils.isBlank(groupNameAttribute)) {
+                throw new IdentityAccessException("Group name attribute is required in login identity provider configuration when group search base is set.");
+            }
+            // if identity strategy is USERNAME, then user name attribute is required
+            if(IdentityStrategy.USE_USERNAME.equals(identityStrategy) && StringUtils.isBlank(userNameAttribute)) {
+                throw new IdentityAccessException("User name attribute is required in login identity provider configuration.");
+            }
+        }
+
+
+        // At this point, we list users based on the configuration parameters
+        // as well as using the filter provided by the user
+        AndFilter andFilter = new AndFilter();
+
+        // looking for objects matching the user object class
+        andFilter.and(new EqualsFilter("objectClass", userObjectClass));
+
+        // if a filter has been provided by the user, we add it to the filter
+        if(!StringUtils.isBlank(userSearchFilter)) {
+            andFilter.and(new HardcodedFilter(userSearchFilter));
+        }
+
+        // we list the users based on the parameters and we return identities (user name + list of groups the user belongs to)
+        List<AuthenticationIdentity> users = new ArrayList<AuthenticationIdentity>();
+
+        if(performUsersSearch) {
+
+            try {
+
+                users = ldapTemplate.search(userSearchBase, andFilter.encode(), new AbstractContextMapper<AuthenticationIdentity>() {
+                    @Override
+                    protected AuthenticationIdentity doMapFromContext(DirContextOperations ctx) {
+                        String name;
+                        if(identityStrategy.equals(IdentityStrategy.USE_DN)) {
+                            name = ctx.getDn().toString();
+                        } else {
+                            Attribute attributeName = ctx.getAttributes().get(userNameAttribute);
+                            if(attributeName == null) {
+                                throw new IdentityAccessException("User name attribute [" + userNameAttribute + "] does not exist.");
+                            }
+                            try {
+                                name = (String) attributeName.get();
+                            } catch (NamingException e) {
+                                throw new IdentityAccessException("Error while retrieving user name attribute [" + userNameAttribute + "].");
+                            }
+                        }
+
+                        List<String> groups = new ArrayList<String>();
+                        if(!StringUtils.isBlank(userGroupNameAttribute)) {
+                            Attribute attributeGroups = ctx.getAttributes().get(userGroupNameAttribute);
+                            if(attributeGroups == null) {
+                                logger.error("User group name attribute [" + userGroupNameAttribute + "] does not exist. Ignoring group membership.");
+                            } else {
+                                try {
+                                    groups = toList((Enumeration<String>) attributeGroups.getAll());
+                                } catch (NamingException e) {
+                                    throw new IdentityAccessException("Error while retrieving user group name attribute [" + userNameAttribute + "].");
+                                }
+                            }
+                        }
+
+                        return new AuthenticationIdentity(name, groups);
+                    }
+
+                    private List<String> toList(Enumeration<String> enumeration) {
+                        List<String> result = new ArrayList<String>();
+                        while(enumeration.hasMoreElements()) {
+                            result.add(enumeration.nextElement());
+                        }
+                        return result;
+                    }
+                });
+
+            } catch (Exception e) {
+                throw new IdentityAccessException("Error while listing users with provided parameters.", e);
+            }
+
+        }
+
+        // At this point, we list groups based on the configuration parameters
+        // as well as using the filter provided by the user
+        AndFilter groupAndFilter = new AndFilter();
+
+        // looking for objects matching the group object class
+        groupAndFilter.and(new EqualsFilter("objectClass", groupObjectClass));
+
+        // if a filter has been provided by the user, we add it to the filter
+        if(!StringUtils.isBlank(groupSearchFilter)) {
+            groupAndFilter.and(new HardcodedFilter(groupSearchFilter));
+        }
+
+        // we list the groups based on the parameters and we return identities (group name + list of users the group contains)
+        List<GroupIdentity> groups = new ArrayList<GroupIdentity>();
+
+        if(!StringUtils.isBlank(groupSearchBase) && performGroupsSearch) {
+
+            try {
+                groups = ldapTemplate.search(groupSearchBase, groupAndFilter.encode(), new AttributesMapper<GroupIdentity>() {
+                    @Override
+                    public GroupIdentity mapFromAttributes(Attributes attributes) throws NamingException {
+                        Attribute attributeName = attributes.get(groupNameAttribute);
+                        if(attributeName == null) {
+                            throw new NamingException("Group name attribute [" + groupNameAttribute + "] does not exist.");
+                        }
+
+                        List<String> users = new ArrayList<String>();
+                        if(!StringUtils.isBlank(groupMemberAttribute)) {
+                            Attribute attributeUsers = attributes.get(groupMemberAttribute);
+                            if(attributeUsers == null) {
+                                logger.error("Group member attribute [" + userGroupNameAttribute + "] does not exist. Ignoring group membership.");
+                            } else {
+                                users = toList((Enumeration<String>) attributeUsers.getAll());
+                            }
+                        }
+
+                        // at this point we got DN of users belonging to the group, if we want to resolve user names
+                        // we have to go through the list to lookup for names.
+                        if(identityStrategy.equals(IdentityStrategy.USE_USERNAME)) {
+                            List<String> usernames = new ArrayList<String>();
+                            for(String userDn : users) {
+                                DirContextAdapter ctx = (DirContextAdapter) ldapTemplate.lookup(userDn);
+                                Attribute userNameAtt = ctx.getAttributes().get(userNameAttribute);
+                                if(userNameAtt == null) {
+                                    throw new IdentityAccessException("User name attribute [" + userNameAttribute + "] does not exist.");
+                                }
+                                usernames.add((String) userNameAtt.get());
+                            }
+                            return new GroupIdentity((String) attributeName.get(), usernames);
+                        }
+
+                        return new GroupIdentity((String) attributeName.get(), users);
+                    }
+
+                    private List<String> toList(Enumeration<String> enumeration) {
+                        List<String> result = new ArrayList<String>();
+                        while(enumeration.hasMoreElements()) {
+                            result.add(enumeration.nextElement());
+                        }
+                        return result;
+                    }
+                });
+            } catch (Exception e) {
+                throw new IdentityAccessException("Error while listing groups with provided parameters.", e);
+            }
+
+        }
+
+        // from here we have two lists of different objects and we want to return one single list
+        Map<String, List<String>> userIdentityMap = new HashMap<String, List<String>>();
+        for(AuthenticationIdentity authId : users) {
+            userIdentityMap.put(authId.getUsername(), authId.getGroups());
+        }
+
+        for(GroupIdentity groupId : groups) {
+            for(String user : groupId.getUsers()) {
+                if(userIdentityMap.containsKey(user)) {
+                    if(!userIdentityMap.get(user).contains(groupId.getGroupName())) {
+                        userIdentityMap.get(user).add(groupId.getGroupName());
+                    }
+                } else {
+                    List<String> initGroupList = new ArrayList<String>();
+                    initGroupList.add(groupId.getGroupName());
+                    userIdentityMap.put(user, initGroupList);
+                }
+            }
+        }
+
+        // construct the final list with all the users/groups to add
+        List<AuthenticationIdentity> result = new ArrayList<AuthenticationIdentity>();
+        for(String user : userIdentityMap.keySet()) {
+            result.add(new AuthenticationIdentity(user, userIdentityMap.get(user)));
+        }
+
+        return result;
+    }
+
+    /**
+     * Class to handle a group with a list of members
+     */
+    private class GroupIdentity {
+
+        private final String groupName;
+        private final List<String> users;
+
+        public GroupIdentity(final String groupName, final List<String> users) {
+            this.groupName = groupName;
+            this.users = users;
+        }
+
+        public String getGroupName() {
+            return groupName;
+        }
+
+        public List<String> getUsers() {
+            return users;
+        }
     }
 
 }

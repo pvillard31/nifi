@@ -16,12 +16,7 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import java.util.Set;
-
 import javax.xml.bind.annotation.XmlType;
-
-import org.apache.nifi.web.api.entity.AccessPolicyEntity;
-import org.apache.nifi.web.api.entity.TenantEntity;
 
 import com.wordnik.swagger.annotations.ApiModelProperty;
 
@@ -31,35 +26,30 @@ import com.wordnik.swagger.annotations.ApiModelProperty;
 @XmlType(name = "syncUsersGroups")
 public class SyncUsersGroupsDTO extends TenantDTO {
 
-    private Set<TenantEntity> users;
-    private Set<AccessPolicyEntity> accessPolicies;
+    private String usersSearchFilter;
+    private String groupsSearchFilter;
 
     /**
-     * @return users in this group
+     * @return The search filter to apply on query to get users.
      */
-    @ApiModelProperty(value = "The users that belong to the user group.")
-    public Set<TenantEntity> getUsers() {
-        return users;
+    @ApiModelProperty(value = "The search filter to apply on query to get users.")
+    public String getUsersSearchFilter() {
+        return usersSearchFilter;
     }
 
-    public void setUsers(Set<TenantEntity> users) {
-        this.users = users;
+    public void setUsersSearchFilter(String usersSearchFilter) {
+        this.usersSearchFilter = usersSearchFilter;
     }
 
     /**
-     * @return policies this user group is part of
+     * @return The search filter to apply on query to get groups.
      */
-    @ApiModelProperty(
-            value = "The access policies this user group belongs to. This field was incorrectly defined as an AccessPolicyEntity. For "
-                    + "compatibility reasons the field will remain of this type, however only the fields that are present in the "
-                    + "AccessPolicySummaryEntity will be populated here.",
-            readOnly = true
-    )
-    public Set<AccessPolicyEntity> getAccessPolicies() {
-        return accessPolicies;
+    @ApiModelProperty(value = "The search filter to apply on query to get groups.")
+    public String getGroupsSearchFilter() {
+        return groupsSearchFilter;
     }
 
-    public void setAccessPolicies(Set<AccessPolicyEntity> accessPolicies) {
-        this.accessPolicies = accessPolicies;
+    public void setGroupsSearchFilter(String groupsSearchFilter) {
+        this.groupsSearchFilter = groupsSearchFilter;
     }
 }

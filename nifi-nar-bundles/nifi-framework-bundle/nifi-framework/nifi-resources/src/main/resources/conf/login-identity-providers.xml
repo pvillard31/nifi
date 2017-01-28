@@ -54,6 +54,16 @@
         'User Search Base' - Base DN for searching for users (i.e. CN=Users,DC=example,DC=com).
         'User Search Filter' - Filter for searching for users against the 'User Search Base'.
             (i.e. sAMAccountName={0}). The user specified name is inserted into '{0}'.
+        
+        'User name Attribute' - The LDAP user name attribute. (i.e. cn).
+        'User Object Class' - Object class to identify user entries. (i.e. person).
+        'User Group Name Attribute' - Attribute from user entry whose values would be treated as group
+        	values to be added (i.e. memberof).
+        
+        'Group Member Attribute' - The LDAP group member attribute name. (i.e. member).
+        'Group Name Attribute' - The LDAP group name attribute. (i.e. cn).
+        'Group Object Class' - LDAP Group object class. (i.e. group).
+        'Group Search Base' - Search base for groups. (i.e. CN=Groups,DC=example,DC=com).
 
         'Identity Strategy' - Strategy to identify users. Possible values are USE_DN and USE_USERNAME.
             The default functionality if this property is missing is USE_DN in order to retain
@@ -89,6 +99,15 @@
         <property name="Url"></property>
         <property name="User Search Base"></property>
         <property name="User Search Filter"></property>
+        
+        <property name="User name Attribute"></property>
+        <property name="User Object Class"></property>
+        <property name="User Group Name Attribute"></property>
+        
+        <property name="Group Member Attribute"></property>
+        <property name="Group Name Attribute"></property>
+        <property name="Group Object Class"></property>
+        <property name="Group Search Base"></property>
 
         <property name="Identity Strategy">USE_DN</property>
         <property name="Authentication Expiration">12 hours</property>

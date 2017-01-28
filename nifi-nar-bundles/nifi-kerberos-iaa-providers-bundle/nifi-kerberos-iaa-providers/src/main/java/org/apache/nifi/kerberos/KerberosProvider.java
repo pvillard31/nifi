@@ -101,7 +101,7 @@ public class KerberosProvider implements LoginIdentityProvider {
     }
 
     @Override
-    public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+    public List<AuthenticationIdentity> listIdentities(String userSearchFilter, String groupSearchFilter) throws IdentityAccessException {
         throw new UnsupportedOperationException("Unsupported operation with Kerberos-based identity provider.");
     }
 

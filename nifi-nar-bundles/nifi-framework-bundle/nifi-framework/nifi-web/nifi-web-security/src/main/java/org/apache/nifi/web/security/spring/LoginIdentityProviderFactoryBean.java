@@ -329,9 +329,9 @@ public class LoginIdentityProviderFactoryBean implements FactoryBean, Disposable
             }
 
             @Override
-            public List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException {
+            public List<AuthenticationIdentity> listIdentities(String userSearchFilter, String groupSearchFilter) throws IdentityAccessException {
                 try (final NarCloseable narCloseable = NarCloseable.withNarLoader()) {
-                    return baseProvider.listIdentities(users, groups);
+                    return baseProvider.listIdentities(userSearchFilter, groupSearchFilter);
                 }
             }
         };

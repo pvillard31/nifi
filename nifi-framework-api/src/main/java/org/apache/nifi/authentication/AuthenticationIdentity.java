@@ -16,41 +16,34 @@
  */
 package org.apache.nifi.authentication;
 
-import java.util.Set;
+import java.util.List;
 
 /**
  * Authentication identity.
  */
 public class AuthenticationIdentity {
 
-    private final String identity;
     private final String username;
-    private final Set<String> groups;
-    private final String issuer;
+    private final List<String> groups;
 
     /**
-     * Creates an authentication response. The username and how long the authentication is valid in milliseconds
+     * Creates an authentication identity made of a valid user name and the list of groups
+     * the user belongs to.
      *
-     * @param identity The user identity
-     * @param username The username
-     * @param issuer The issuer of the token
+     * @param username The user name
+     * @param groups List of groups the user belongs to
      */
-    public AuthenticationIdentity(final String identity, final String username, final String issuer) {
-        this.identity = identity;
+    public AuthenticationIdentity(final String username, final List<String> groups) {
         this.username = username;
-        this.issuer = issuer;
-    }
-
-    public String getIdentity() {
-        return identity;
+        this.groups = groups;
     }
 
     public String getUsername() {
         return username;
     }
 
-    public String getIssuer() {
-        return issuer;
+    public List<String> getGroups() {
+        return groups;
     }
 
 }

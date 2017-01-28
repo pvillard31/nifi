@@ -69,6 +69,6 @@ public interface LoginIdentityProvider {
      * @return list of authentication identities
      * @throws IdentityAccessException Unable to perform the operation due to an issue accessing the underlying storage
      */
-    List<AuthenticationIdentity> listIdentities(String[] users, String[] groups) throws IdentityAccessException;
+    List<AuthenticationIdentity> listIdentities(String userSearchFilter, String groupSearchFilter) throws IdentityAccessException;
 
 }
