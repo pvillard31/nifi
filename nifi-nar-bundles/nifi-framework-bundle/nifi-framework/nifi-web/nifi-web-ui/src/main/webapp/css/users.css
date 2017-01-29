@@ -69,6 +69,12 @@
     padding-left: 5px;
 }
 
+#sync-users-button {
+    float: right;
+    margin: 0px 5px 0px;
+    padding-left: 5px;
+}
+
 /* users table */
 
 #users-table {

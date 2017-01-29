@@ -28,6 +28,7 @@
             <div id="users-filter-type" class="filter-type"></div>
         </div>
         <button id="new-user-button" class="fa fa-user-plus"></button>
+        <button id="sync-users-button" class="fa fa-users"></button>
         <div class="clear"></div>
     </div>
     <div id="users-table"></div>

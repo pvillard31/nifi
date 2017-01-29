@@ -19,7 +19,10 @@ package org.apache.nifi.web.api;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
@@ -1028,7 +1031,9 @@ public class TenantsResource extends ApplicationResource {
         // at this point we have the list of users (and groups the users belong to) from the identity provider
         // create the tenant entities to return
 
-        final List<TenantEntity> tenantsToReturn = new ArrayList<>();
+        final List<TenantEntity> usersToReturn = new ArrayList<TenantEntity>();
+        final Map<String, TenantEntity> groupsToReturn = new HashMap<String, TenantEntity>();
+
 
         for(AuthenticationIdentity identity : usersToSync) {
 
@@ -1044,6 +1049,7 @@ public class TenantsResource extends ApplicationResource {
                     final UserDTO tenant = new UserDTO();
                     tenant.setId(user.getId());
                     tenant.setIdentity(user.getIdentity());
+                    tenant.setUserGroups(new HashSet<TenantEntity>());
 
                     for(String group : groups) {
                         final TenantEntity groupEntity = new TenantEntity();
@@ -1065,7 +1071,9 @@ public class TenantsResource extends ApplicationResource {
                         if(!isExistingGroup) {
                             final UserGroupDTO groupDto = new UserGroupDTO();
                             groupDto.setIdentity(group);
+                            groupDto.setId(generateUuid());
                             groupEntity.setComponent(groupDto);
+                            groupEntity.setId(generateUuid());
                         }
                         tenant.getUserGroups().add(groupEntity);
                     }
@@ -1075,7 +1083,7 @@ public class TenantsResource extends ApplicationResource {
                     entity.setRevision(userEntity.getRevision());
                     entity.setId(userEntity.getId());
                     entity.setComponent(tenant);
-                    tenantsToReturn.add(entity);
+                    usersToReturn.add(entity);
                     break;
                 }
             }
@@ -1084,6 +1092,8 @@ public class TenantsResource extends ApplicationResource {
 
                 final UserDTO tenant = new UserDTO();
                 tenant.setIdentity(username);
+                tenant.setId(generateUuid());
+                tenant.setUserGroups(new HashSet<TenantEntity>());
 
                 for(String group : groups) {
                     final TenantEntity groupEntity = new TenantEntity();
@@ -1105,21 +1115,27 @@ public class TenantsResource extends ApplicationResource {
                     if(!isExistingGroup) {
                         final UserGroupDTO groupDto = new UserGroupDTO();
                         groupDto.setIdentity(group);
+                        groupDto.setId(generateUuid());
                         groupEntity.setComponent(groupDto);
+                        groupEntity.setId(generateUuid());
                     }
+
                     tenant.getUserGroups().add(groupEntity);
                 }
 
                 final TenantEntity entity = new TenantEntity();
                 entity.setComponent(tenant);
-                tenantsToReturn.add(entity);
+                usersToReturn.add(entity);
             }
 
         }
 
+        // we also want to build the view groups:users to have full display capabilities in UI
+
+
         // build the response
         final TenantsEntity results = new TenantsEntity();
-        results.setUsers(tenantsToReturn);
+        results.setUsers(usersToReturn);
 
         // generate an 200 - OK response
         return noCache(Response.ok(results)).build();

@@ -494,6 +494,102 @@
         });
     };
 
+
+    /**
+     * Initializes the sync users table.
+     */
+    var initSyncUsersDialog = function () {
+        $('#sync-users-dialog').modal({
+            headerText: 'Synchronize Users/Groups',
+            buttons: [{
+                buttonText: 'Ok',
+                color: {
+                    base: '#728E9B',
+                    hover: '#004849',
+                    text: '#ffffff'
+                },
+                handler: {
+                    click: function () {
+                        var userId = $('#user-id-edit-dialog').text();
+                        var userIdentity = $('#user-identity-edit-dialog').val();
+
+                        // see if we should create or update this user
+                        if ($.trim(userId) === '') {
+                            var tenantEntity = {
+                                'revision': client.getRevision({
+                                    'revision': {
+                                        'version': 0
+                                    }
+                                })
+                            };
+
+                            // handle whether it's a user or a group
+                            if ($('#individual-radio-button').is(':checked')) {
+                                // record the user groups
+                                tenantEntity['component'] = {
+                                    'identity': userIdentity
+                                };
+
+                                createUser(tenantEntity, getSelectedGroups());
+                            } else {
+                                // record the users
+                                tenantEntity['component'] = {
+                                    'identity': userIdentity,
+                                    'users': getSelectedUsers()
+                                };
+
+                                createGroup(tenantEntity);
+                            }
+
+                            // update any selected policies
+                        } else {
+                            // handle whether it's a user or a group
+                            if ($('#individual-radio-button').is(':checked')) {
+                                updateUser(userId, userIdentity, getSelectedGroups());
+
+                                // update any selected policies
+                            } else {
+                                updateGroup(userId, userIdentity, getSelectedUsers());
+
+                                // update any selected policies
+                            }
+                        }
+
+                        $('#user-dialog').modal('hide');
+                    }
+                }
+            }, {
+                buttonText: 'Cancel',
+                color: {
+                    base: '#E3E8EB',
+                    hover: '#C7D2D7',
+                    text: '#004849'
+                },
+                handler: {
+                    click: function () {
+                        $('#user-dialog').modal('hide');
+                    }
+                }
+            }],
+            handler: {
+                close: function () {
+                    // reset the radio button
+                    $('#user-dialog input[name="userOrGroup"]').attr('disabled', false);
+                    $('#individual-radio-button').prop('checked', true);
+                    $('#user-groups').show();
+                    $('#group-members').hide();
+
+                    // clear the fields
+                    $('#user-id-edit-dialog').text('');
+                    $('#user-identity-edit-dialog').val('');
+                    $('#available-users').empty()
+                    $('#available-groups').empty()
+                }
+            }
+        });
+
+    };
+
     /**
      * Initializes the user policies dialog.
      */
@@ -1221,8 +1317,10 @@
             initUserPoliciesTable();
             initUserDeleteDialog();
             initUsersTable();
+            initSyncUsersDialog();
 
             if (common.canModifyTenants()) {
+            	// add a user/group
                 $('#new-user-button').on('click', function () {
                     buildUsersList();
                     buildGroupsList();
@@ -1235,8 +1333,20 @@
                 });
 
                 $('#new-user-button').prop('disabled', false);
+
+                // sync users/groups
+                $('#sync-users-button').on('click', function () {
+                    // show the dialog
+                    $('#sync-users-dialog').modal('show');
+
+                    // set the focus automatically, only when adding a new user
+                    $('#user-filter-edit-dialog').focus();
+                });
+
+                $('#sync-users-button').prop('disabled', false);
             } else {
                 $('#new-user-button').prop('disabled', true);
+                $('#sync-users-button').prop('disabled', true);
             }
         },
 
