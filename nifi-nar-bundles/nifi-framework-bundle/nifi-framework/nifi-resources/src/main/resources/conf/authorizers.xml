@@ -61,4 +61,16 @@
         <property name="Node Identity 2"></property>
         -->
     </authorizer>
+    
+    
+    <!-- 
+    
+    -->
+    <!--
+    <user-group-provider>
+    	<identifier></identifier>
+    	<class></class>
+    	<property name=""></property>
+    </user-group-provider>
+    -->
 </authorizers>

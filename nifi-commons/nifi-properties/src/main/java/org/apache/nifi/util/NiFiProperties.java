@@ -141,6 +141,7 @@ public abstract class NiFiProperties {
     public static final String SECURITY_NEED_CLIENT_AUTH = "nifi.security.needClientAuth";
     public static final String SECURITY_USER_AUTHORIZER = "nifi.security.user.authorizer";
     public static final String SECURITY_USER_LOGIN_IDENTITY_PROVIDER = "nifi.security.user.login.identity.provider";
+    public static final String SECURITY_USER_GROUP_PROVIDER = "nifi.security.user.group.provider";
     public static final String SECURITY_CLUSTER_AUTHORITY_PROVIDER_PORT = "nifi.security.cluster.authority.provider.port";
     public static final String SECURITY_CLUSTER_AUTHORITY_PROVIDER_THREADS = "nifi.security.cluster.authority.provider.threads";
     public static final String SECURITY_OCSP_RESPONDER_URL = "nifi.security.ocsp.responder.url";

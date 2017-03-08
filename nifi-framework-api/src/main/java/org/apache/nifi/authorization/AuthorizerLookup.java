@@ -28,4 +28,12 @@ public interface AuthorizerLookup {
      * @return                  The Authorizer
      */
     Authorizer getAuthorizer(String identifier);
+
+    /**
+     * Looks up the User Group Provider with the specified identifier
+     *
+     * @param identifier        The identifier of the User Group Provider
+     * @return                  The User Group Provider
+     */
+    UserGroupProvider getUserGroupProvider(String identifier);
 }

@@ -16,11 +16,30 @@
  */
 package org.apache.nifi.authorization;
 
+import java.io.File;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import javax.xml.XMLConstants;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBElement;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Unmarshaller;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.authorization.annotation.AuthorizerContext;
 import org.apache.nifi.authorization.exception.AuthorizationAccessException;
 import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.authorization.exception.AuthorizerDestructionException;
+import org.apache.nifi.authorization.exception.UserGroupProviderCreationException;
 import org.apache.nifi.authorization.generated.Authorizers;
 import org.apache.nifi.authorization.generated.Property;
 import org.apache.nifi.nar.ExtensionManager;
@@ -31,23 +50,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.xml.sax.SAXException;
-
-import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import java.io.File;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Factory bean for loading the configured authorizer.
@@ -71,8 +73,10 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
     }
 
     private Authorizer authorizer;
+    private UserGroupProvider userGroupProvider;
     private NiFiProperties properties;
     private final Map<String, Authorizer> authorizers = new HashMap<>();
+    private final Map<String, UserGroupProvider> userGroupProviders = new HashMap<>();
 
 
     @Override
@@ -81,14 +85,21 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
     }
 
     @Override
+    public UserGroupProvider getUserGroupProvider(String identifier) {
+        return userGroupProviders.get(identifier);
+    }
+
+    @Override
     public Object getObject() throws Exception {
         if (authorizer == null) {
             if (properties.getSslPort() == null) {
                 // use a default authorizer... only allowable when running not securely
                 authorizer = createDefaultAuthorizer();
+                userGroupProvider = createDefaultUserGroupProvider();
             } else {
                 // look up the authorizer to use
                 final String authorizerIdentifier = properties.getProperty(NiFiProperties.SECURITY_USER_AUTHORIZER);
+                final String userGroupProviderId = properties.getProperty(NiFiProperties.SECURITY_USER_GROUP_PROVIDER);
 
                 // ensure the authorizer class name was specified
                 if (StringUtils.isBlank(authorizerIdentifier)) {
@@ -114,11 +125,44 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
                     if (authorizer == null) {
                         throw new Exception(String.format("The specified authorizer '%s' could not be found.", authorizerIdentifier));
                     }
+
+                    // if we have an authorizer, we can load a user group provider, if defined
+                    // if no authorizer, there is no point to load it
+                    if (StringUtils.isNotBlank(userGroupProviderId)) {
+                        // create each user group provider
+                        for (final org.apache.nifi.authorization.generated.UserGroupProvider ugp : authorizerConfiguration.getUserGroupProvider()) {
+                            userGroupProviders.put(ugp.getIdentifier(), createUserGroupProvider(ugp.getIdentifier(), ugp.getClazz()));
+                        }
+
+                        // configure each user group provider
+                        for (final org.apache.nifi.authorization.generated.UserGroupProvider ugp : authorizerConfiguration.getUserGroupProvider()) {
+                            final UserGroupProvider instance = userGroupProviders.get(ugp.getIdentifier());
+                            instance.onConfigured(loadUserGroupProviderConfiguration(ugp));
+                        }
+
+                        // get the configured user group provider
+                        userGroupProvider = getUserGroupProvider(userGroupProviderId);
+
+                        // ensure it was found
+                        if (userGroupProvider == null) {
+                            throw new Exception(String.format("The specified user group provider '%s' could not be found.", userGroupProviderId));
+                        }
+                    }
                 }
             }
         }
 
         return authorizer;
+    }
+
+    private UserGroupProviderConfigurationContext loadUserGroupProviderConfiguration(org.apache.nifi.authorization.generated.UserGroupProvider ugp) {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    private UserGroupProvider createUserGroupProvider(String identifier, String clazz) {
+        // TODO Auto-generated method stub
+        return null;
     }
 
     private Authorizers loadAuthorizersConfiguration() throws Exception {
@@ -277,6 +321,17 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
 
             @Override
             public void preDestruction() throws AuthorizerDestructionException {
+            }
+        };
+    }
+
+    /**
+     * @return a default User Group provider to use when running insecurely with no user group provider configured
+     */
+    private UserGroupProvider createDefaultUserGroupProvider() {
+        return new UserGroupProvider() {
+            @Override
+            public void onConfigured(UserGroupProviderConfigurationContext configurationContext) throws UserGroupProviderCreationException {
             }
         };
     }

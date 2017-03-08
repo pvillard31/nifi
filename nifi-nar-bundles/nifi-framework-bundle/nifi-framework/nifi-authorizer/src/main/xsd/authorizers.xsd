@@ -14,8 +14,17 @@
   limitations under the License.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-    <!-- role -->
+    <!-- Authorizer -->
     <xs:complexType name="Authorizer">
+        <xs:sequence>
+            <xs:element name="identifier" type="NonEmptyStringType"/>
+            <xs:element name="class" type="NonEmptyStringType"/>
+            <xs:element name="property" type="Property" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+    
+    <!-- User Group provider -->
+    <xs:complexType name="UserGroupProvider">
         <xs:sequence>
             <xs:element name="identifier" type="NonEmptyStringType"/>
             <xs:element name="class" type="NonEmptyStringType"/>
@@ -42,6 +51,7 @@
     <xs:element name="authorizers">
         <xs:complexType>
             <xs:sequence>
+                <xs:element name="user-group-provider" type="UserGroupProvider" minOccurs="0" maxOccurs="unbounded"/>
                 <xs:element name="authorizer" type="Authorizer" minOccurs="0" maxOccurs="unbounded"/>
             </xs:sequence>
         </xs:complexType>
