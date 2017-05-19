@@ -103,6 +103,7 @@
         <yammer.metrics.version>2.2.0</yammer.metrics.version>
         <ranger.version>0.6.0</ranger.version>
         <hive.version>1.2.1</hive.version>
+        <hive2.version>2.1.0</hive2.version>
         <hive.hadoop.version>2.6.2</hive.hadoop.version>
         <hbase.version>1.1.2</hbase.version>
         <storm.version>1.0.1</storm.version>
