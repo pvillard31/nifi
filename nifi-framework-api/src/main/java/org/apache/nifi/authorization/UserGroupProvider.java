@@ -13,4 +13,11 @@ public interface UserGroupProvider {
      */
     void onConfigured(UserGroupProviderConfigurationContext configurationContext) throws UserGroupProviderCreationException;
 
+    /**
+     * Called immediately after instance creation for implementers to perform additional setup
+     *
+     * @param initializationContext in which to initialize
+     */
+    void initialize(AuthorizerInitializationContext initializationContext) throws UserGroupProviderCreationException;
+
 }

@@ -16,35 +16,39 @@
  */
 package org.apache.nifi.authorization;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.nifi.attribute.expression.language.StandardPropertyValue;
 import org.apache.nifi.components.PropertyValue;
 
 /**
  *
  */
-public interface AuthorizerConfigurationContext {
+public class StandardUserGroupProviderConfigurationContext implements UserGroupProviderConfigurationContext {
 
-    /**
-     * @return identifier for the authorizer
-     */
-    String getIdentifier();
+    private final String identifier;
+    private final Map<String, String> properties;
 
-    /**
-     * Retrieves all properties the component currently understands regardless
-     * of whether a value has been set for them or not. If no value is present
-     * then its value is null and thus any registered default for the property
-     * descriptor applies.
-     *
-     * @return Map of all properties
-     */
-    Map<String, String> getProperties();
+    public StandardUserGroupProviderConfigurationContext(String identifier, Map<String, String> properties) {
+        this.identifier = identifier;
+        this.properties = Collections.unmodifiableMap(new HashMap<String, String>(properties));
+    }
 
-    /**
-     * @param property to lookup the descriptor and value of
-     * @return the value the component currently understands for the given
-     * PropertyDescriptor. This method does not substitute default
-     * PropertyDescriptor values, so the value returned will be null if not set
-     */
-    PropertyValue getProperty(String property);
+    @Override
+    public String getIdentifier() {
+        return identifier;
+    }
+
+    @Override
+    public Map<String, String> getProperties() {
+        return properties;
+    }
+
+    @Override
+    public PropertyValue getProperty(String property) {
+        return new StandardPropertyValue(properties.get(property), null);
+    }
+
 }

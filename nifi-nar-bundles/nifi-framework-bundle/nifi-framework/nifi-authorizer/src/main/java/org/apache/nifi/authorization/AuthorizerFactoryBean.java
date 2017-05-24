@@ -22,6 +22,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -52,27 +53,6 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.xml.sax.SAXException;
 
-<<<<<<< HEAD
-=======
-import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import java.io.File;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
->>>>>>> 232380dbfd59de45c4c6623f141d6e7052c367f9
 /**
  * Factory bean for loading the configured authorizer.
  */
@@ -178,13 +158,90 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
     }
 
     private UserGroupProviderConfigurationContext loadUserGroupProviderConfiguration(org.apache.nifi.authorization.generated.UserGroupProvider ugp) {
-        // TODO Auto-generated method stub
-        return null;
+        final Map<String, String> ugpProperties = new HashMap<>();
+
+        for (final Property property : ugp.getProperty()) {
+            ugpProperties.put(property.getName(), property.getValue());
+        }
+        return new StandardUserGroupProviderConfigurationContext(ugp.getIdentifier(), ugpProperties);
     }
 
-    private UserGroupProvider createUserGroupProvider(String identifier, String clazz) {
-        // TODO Auto-generated method stub
-        return null;
+    private UserGroupProvider createUserGroupProvider(String identifier, String clazz) throws Exception {
+        // get the classloader for the specified user group provider
+        final List<Bundle> ugpBundles = ExtensionManager.getBundles(clazz);
+
+        if (ugpBundles.size() == 0) {
+            throw new Exception(String.format("The specified user group provider class '%s' is not known to this nifi.", clazz));
+        }
+
+        if (ugpBundles.size() > 1) {
+            throw new Exception(String.format("Multiple bundles found for the specified user group provider class '%s', only one is allowed.", clazz));
+        }
+
+        final Bundle ugpBundle = ugpBundles.get(0);
+        final ClassLoader ugpClassLoader = ugpBundle.getClassLoader();
+
+        // get the current context classloader
+        final ClassLoader currentClassLoader = Thread.currentThread().getContextClassLoader();
+
+        final UserGroupProvider instance;
+        try {
+            // set the appropriate class loader
+            Thread.currentThread().setContextClassLoader(ugpClassLoader);
+
+            // attempt to load the class
+            Class<?> rawUgpClass = Class.forName(clazz, true, ugpClassLoader);
+            Class<? extends UserGroupProvider> ugpClass = rawUgpClass.asSubclass(UserGroupProvider.class);
+
+            // otherwise create a new instance
+            Constructor<? extends UserGroupProvider> constructor = ugpClass.getConstructor();
+            instance = constructor.newInstance();
+
+            // method injection
+            performMethodInjection(instance, ugpClass);
+
+            // field injection
+            performFieldInjection(instance, ugpClass);
+
+            // call post construction lifecycle event
+            instance.initialize(new StandardUserGroupProviderInitializationContext(identifier, this));
+        } finally {
+            if (currentClassLoader != null) {
+                Thread.currentThread().setContextClassLoader(currentClassLoader);
+            }
+        }
+
+        return withNarLoader(instance);
+    }
+
+    private UserGroupProvider withNarLoader(UserGroupProvider instance) {
+        return new UserGroupProvider() {
+            @Override
+            public void onConfigured(UserGroupProviderConfigurationContext configurationContext) throws UserGroupProviderCreationException {
+                try (final NarCloseable narCloseable = NarCloseable.withNarLoader()) {
+                    instance.onConfigured(configurationContext);
+                }
+            }
+
+            @Override
+            public void initialize(AuthorizerInitializationContext initializationContext) throws UserGroupProviderCreationException {
+                try (final NarCloseable narCloseable = NarCloseable.withNarLoader()) {
+                    instance.initialize(initializationContext);
+                }
+            }
+        };
+    }
+
+    private UserGroupProvider createDefaultUserGroupProvider() {
+        return new UserGroupProvider() {
+            @Override
+            public void onConfigured(UserGroupProviderConfigurationContext configurationContext) throws UserGroupProviderCreationException {
+            }
+
+            @Override
+            public void initialize(AuthorizerInitializationContext initializationContext) throws UserGroupProviderCreationException {
+            }
+        };
     }
 
     private Authorizers loadAuthorizersConfiguration() throws Exception {
@@ -238,8 +295,8 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
             Class<? extends Authorizer> authorizerClass = rawAuthorizerClass.asSubclass(Authorizer.class);
 
             // otherwise create a new instance
-            Constructor constructor = authorizerClass.getConstructor();
-            instance = (Authorizer) constructor.newInstance();
+            Constructor<? extends Authorizer> constructor = authorizerClass.getConstructor();
+            instance = constructor.newInstance();
 
             // method injection
             performMethodInjection(instance, authorizerClass);
@@ -267,7 +324,7 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
         return new StandardAuthorizerConfigurationContext(authorizer.getIdentifier(), authorizerProperties);
     }
 
-    private void performMethodInjection(final Authorizer instance, final Class authorizerClass) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+    private void performMethodInjection(final Object instance, final Class authorizerClass) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         for (final Method method : authorizerClass.getMethods()) {
             if (method.isAnnotationPresent(AuthorizerContext.class)) {
                 // make the method accessible
@@ -299,7 +356,7 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
         }
     }
 
-    private void performFieldInjection(final Authorizer instance, final Class authorizerClass) throws IllegalArgumentException, IllegalAccessException {
+    private void performFieldInjection(final Object instance, final Class authorizerClass) throws IllegalArgumentException, IllegalAccessException {
         for (final Field field : authorizerClass.getDeclaredFields()) {
             if (field.isAnnotationPresent(AuthorizerContext.class)) {
                 // make the method accessible
@@ -351,17 +408,6 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
 
             @Override
             public void preDestruction() throws AuthorizerDestructionException {
-            }
-        };
-    }
-
-    /**
-     * @return a default User Group provider to use when running insecurely with no user group provider configured
-     */
-    private UserGroupProvider createDefaultUserGroupProvider() {
-        return new UserGroupProvider() {
-            @Override
-            public void onConfigured(UserGroupProviderConfigurationContext configurationContext) throws UserGroupProviderCreationException {
             }
         };
     }
@@ -550,7 +596,7 @@ public class AuthorizerFactoryBean implements FactoryBean, DisposableBean, Autho
     }
 
     @Override
-    public Class getObjectType() {
+    public Class<? extends Authorizer> getObjectType() {
         return Authorizer.class;
     }
 

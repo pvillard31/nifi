@@ -16,8 +16,14 @@
  */
 package org.apache.nifi.web.contextlistener;
 
+import java.io.IOException;
+
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+
 import org.apache.nifi.authentication.LoginIdentityProvider;
 import org.apache.nifi.authorization.Authorizer;
+import org.apache.nifi.authorization.UserGroupProvider;
 import org.apache.nifi.cluster.coordination.http.replication.RequestReplicator;
 import org.apache.nifi.controller.FlowController;
 import org.apache.nifi.controller.repository.RepositoryPurgeException;
@@ -29,10 +35,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.web.context.support.WebApplicationContextUtils;
-
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletContextListener;
-import java.io.IOException;
 
 /**
  * Application context listener for starting the application. If the application is configured for a standalone environment or the application is a node in a clustered environment then a flow
@@ -91,6 +93,7 @@ public class ApplicationStartupContextListener implements ServletContextListener
         try {
             // attempt to get a few beans that we want to to ensure properly created since they are lazily initialized
             ctx.getBean("loginIdentityProvider", LoginIdentityProvider.class);
+            ctx.getBean("userGroupProvider", UserGroupProvider.class);
             ctx.getBean("authorizer", Authorizer.class);
         } catch (final BeansException e) {
             shutdown();
