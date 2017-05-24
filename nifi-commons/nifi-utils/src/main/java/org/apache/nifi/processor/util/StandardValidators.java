@@ -446,6 +446,34 @@ public class StandardValidators {
 
     public static final Validator FILE_EXISTS_VALIDATOR = new FileExistsValidator(true);
 
+    /*
+    * Validates that one or more files exist, as specified in a single property.
+    */
+    public static final Validator ONE_OR_MORE_FILE_EXISTS_VALIDATOR = new Validator() {
+        @Override
+        public ValidationResult validate(String subject, String input, ValidationContext context) {
+            if (context.isExpressionLanguageSupported(subject) && context.isExpressionLanguagePresent(input)) {
+                return new ValidationResult.Builder().subject(subject).input(input).explanation("Expression Language Present").valid(true).build();
+            }
+
+            final String[] files = input.split(",");
+            for (String filename : files) {
+                try {
+                    final File file = new File(filename.trim());
+                    final boolean valid = file.exists() && file.isFile();
+                    if (!valid) {
+                        final String message = "File " + file + " does not exist or is not a file";
+                        return new ValidationResult.Builder().subject(subject).input(input).valid(false).explanation(message).build();
+                    }
+                } catch (SecurityException e) {
+                    final String message = "Unable to access " + filename + " due to " + e.getMessage();
+                    return new ValidationResult.Builder().subject(subject).input(input).valid(false).explanation(message).build();
+                }
+            }
+            return new ValidationResult.Builder().subject(subject).input(input).valid(true).build();
+        }
+    };
+
     //
     //
     // FACTORY METHODS FOR VALIDATORS

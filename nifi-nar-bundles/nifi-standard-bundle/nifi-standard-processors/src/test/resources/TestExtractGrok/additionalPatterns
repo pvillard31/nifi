@@ -1,0 +1,1 @@
+DUMMYTEST My value is %{NUMBER:myValue}

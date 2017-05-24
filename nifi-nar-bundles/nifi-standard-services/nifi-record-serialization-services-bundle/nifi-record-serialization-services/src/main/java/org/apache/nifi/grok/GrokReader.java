@@ -81,10 +81,11 @@ public class GrokReader extends SchemaRegistryService implements RecordReaderFac
 
     static final PropertyDescriptor PATTERN_FILE = new PropertyDescriptor.Builder()
         .name("Grok Pattern File")
-        .description("Path to a file that contains Grok Patterns to use for parsing logs. If not specified, a built-in default Pattern file "
+        .displayName("Grok Pattern file(s)")
+        .description("Comma-separated list of paths to Grok pattern files to use for parsing logs. If not specified, a built-in default Pattern file "
             + "will be used. If specified, all patterns in the given pattern file will override the default patterns. See the Controller Service's "
             + "Additional Details for a list of pre-defined patterns.")
-        .addValidator(StandardValidators.FILE_EXISTS_VALIDATOR)
+        .addValidator(StandardValidators.ONE_OR_MORE_FILE_EXISTS_VALIDATOR)
         .expressionLanguageSupported(true)
         .required(false)
         .build();
@@ -126,7 +127,13 @@ public class GrokReader extends SchemaRegistryService implements RecordReaderFac
         }
 
         if (context.getProperty(PATTERN_FILE).isSet()) {
-            grok.addPatternFromFile(context.getProperty(PATTERN_FILE).evaluateAttributeExpressions().getValue());
+            String patternFiles = context.getProperty(PATTERN_FILE).evaluateAttributeExpressions().getValue();
+            if (null != patternFiles) {
+                String[] files = patternFiles.split(",");
+                for (String file : files) {
+                    grok.addPatternFromFile(file.trim());
+                }
+            }
         }
 
         grok.compile(context.getProperty(GROK_EXPRESSION).getValue());

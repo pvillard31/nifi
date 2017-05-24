@@ -85,9 +85,10 @@ public class ExtractGrok extends AbstractProcessor {
 
     public static final PropertyDescriptor GROK_PATTERN_FILE = new PropertyDescriptor.Builder()
         .name("Grok Pattern file")
-        .description("Grok Pattern file definition")
+        .displayName("Grok Pattern file(s)")
+        .description("Comma-separated list of paths to Grok pattern definition files")
         .required(true)
-        .addValidator(StandardValidators.FILE_EXISTS_VALIDATOR)
+        .addValidator(StandardValidators.ONE_OR_MORE_FILE_EXISTS_VALIDATOR)
         .build();
 
     public static final PropertyDescriptor DESTINATION = new PropertyDescriptor.Builder()
@@ -173,7 +174,14 @@ public class ExtractGrok extends AbstractProcessor {
         }
 
         grok = new Grok();
-        grok.addPatternFromFile(context.getProperty(GROK_PATTERN_FILE).getValue());
+
+        String patternFiles = context.getProperty(GROK_PATTERN_FILE).getValue();
+        if (null != patternFiles) {
+            String[] files = patternFiles.split(",");
+            for (String file : files) {
+                grok.addPatternFromFile(file.trim());
+            }
+        }
         grok.compile(context.getProperty(GROK_EXPRESSION).getValue());
     }
 

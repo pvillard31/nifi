@@ -86,4 +86,23 @@ public class TestExtractGrok {
         testRunner.assertNotValid();
     }
 
+    @Test
+    public void testExtractGrokCheckFiles() throws IOException {
+        testRunner.setProperty(ExtractGrok.GROK_EXPRESSION, "%{COMMONAPACHELOG}");
+        testRunner.setProperty(ExtractGrok.GROK_PATTERN_FILE, "src/test/resources/TestExtractGrok/patterns, wrongFile");
+        testRunner.enqueue(GROK_LOG_INPUT);
+        testRunner.assertNotValid();
+    }
+
+    @Test
+    public void testExtractGrokMultipleFiles() throws IOException {
+        testRunner.setProperty(ExtractGrok.GROK_EXPRESSION, "%{DUMMYTEST}");
+        testRunner.setProperty(ExtractGrok.GROK_PATTERN_FILE, "src/test/resources/TestExtractGrok/additionalPatterns,src/test/resources/TestExtractGrok/patterns");
+        testRunner.enqueue("My value is 2");
+        testRunner.run();
+        testRunner.assertAllFlowFilesTransferred(ExtractGrok.REL_MATCH);
+        final MockFlowFile matched = testRunner.getFlowFilesForRelationship(ExtractGrok.REL_MATCH).get(0);
+        matched.assertAttributeEquals("grok.myValue","2");
+    }
+
 }
