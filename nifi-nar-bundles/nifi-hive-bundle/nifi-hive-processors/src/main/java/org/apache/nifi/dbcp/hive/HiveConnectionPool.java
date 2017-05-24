@@ -22,6 +22,7 @@ import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hive.jdbc.HiveDriver;
+import org.apache.nifi.annotation.behavior.RequiresInstanceClassLoading;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
@@ -43,6 +44,7 @@ import org.apache.nifi.util.hive.HiveUtils;
 import org.apache.nifi.util.hive.ValidationResources;
 
 import java.io.IOException;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -59,6 +61,7 @@ import org.apache.nifi.controller.ControllerServiceInitializationContext;
  * Implementation for Database Connection Pooling Service used for Apache Hive
  * connections. Apache DBCP is used for connection pooling functionality.
  */
+@RequiresInstanceClassLoading
 @Tags({"hive", "dbcp", "jdbc", "database", "connection", "pooling", "store"})
 @CapabilityDescription("Provides Database Connection Pooling Service for Apache Hive. Connections can be asked from pool and returned after usage.")
 public class HiveConnectionPool extends AbstractControllerService implements HiveDBCPService {
@@ -72,6 +75,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .defaultValue(null)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .required(true)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor HIVE_CONFIGURATION_RESOURCES = new PropertyDescriptor.Builder()
@@ -80,7 +84,10 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .description("A file or comma separated list of files which contains the Hive configuration (hive-site.xml, e.g.). Without this, Hadoop "
                     + "will search the classpath for a 'hive-site.xml' file or will revert to a default configuration. Note that to enable authentication "
                     + "with Kerberos e.g., the appropriate properties must be set in the configuration files. Please see the Hive documentation for more details.")
-            .required(false).addValidator(HiveUtils.createMultipleFilesExistValidator()).build();
+            .required(false)
+            .addValidator(HiveUtils.createMultipleFilesExistValidator())
+            .expressionLanguageSupported(true)
+            .build();
 
     public static final PropertyDescriptor DB_USER = new PropertyDescriptor.Builder()
             .name("hive-db-user")
@@ -88,6 +95,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .description("Database user name")
             .defaultValue(null)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor DB_PASSWORD = new PropertyDescriptor.Builder()
@@ -98,6 +106,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .required(false)
             .sensitive(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor MAX_WAIT_TIME = new PropertyDescriptor.Builder()
@@ -108,7 +117,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .defaultValue("500 millis")
             .required(true)
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
-            .sensitive(false)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor MAX_TOTAL_CONNECTIONS = new PropertyDescriptor.Builder()
@@ -119,7 +128,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             .defaultValue("8")
             .required(true)
             .addValidator(StandardValidators.INTEGER_VALIDATOR)
-            .sensitive(false)
+            .expressionLanguageSupported(true)
             .build();
 
     public static final PropertyDescriptor VALIDATION_QUERY = new PropertyDescriptor.Builder()
@@ -180,7 +189,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
         final List<ValidationResult> problems = new ArrayList<>();
 
         if (confFileProvided) {
-            final String configFiles = validationContext.getProperty(HIVE_CONFIGURATION_RESOURCES).getValue();
+            final String configFiles = validationContext.getProperty(HIVE_CONFIGURATION_RESOURCES).evaluateAttributeExpressions().getValue();
             final String principal = validationContext.getProperty(kerberosProperties.getKerberosPrincipal()).getValue();
             final String keyTab = validationContext.getProperty(kerberosProperties.getKerberosKeytab()).getValue();
             problems.addAll(hiveConfigurator.validate(configFiles, principal, keyTab, validationResourceHolder, getLogger()));
@@ -204,11 +213,9 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
     @OnEnabled
     public void onConfigured(final ConfigurationContext context) throws InitializationException {
 
-        connectionUrl = context.getProperty(DATABASE_URL).getValue();
-
         ComponentLog log = getLogger();
 
-        final String configFiles = context.getProperty(HIVE_CONFIGURATION_RESOURCES).getValue();
+        final String configFiles = context.getProperty(HIVE_CONFIGURATION_RESOURCES).evaluateAttributeExpressions().getValue();
         final Configuration hiveConfig = hiveConfigurator.getConfigurationFromFiles(configFiles);
         final String validationQuery = context.getProperty(VALIDATION_QUERY).evaluateAttributeExpressions().getValue();
 
@@ -216,7 +223,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
         for (final Map.Entry<PropertyDescriptor, String> entry : context.getProperties().entrySet()) {
             final PropertyDescriptor descriptor = entry.getKey();
             if (descriptor.isDynamic()) {
-                hiveConfig.set(descriptor.getName(), entry.getValue());
+                hiveConfig.set(descriptor.getName(), context.getProperty(descriptor).evaluateAttributeExpressions().getValue());
             }
         }
 
@@ -234,15 +241,15 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             getLogger().info("Successfully logged in as principal {} with keytab {}", new Object[]{principal, keyTab});
 
         }
-        final String user = context.getProperty(DB_USER).getValue();
-        final String passw = context.getProperty(DB_PASSWORD).getValue();
-        final Long maxWaitMillis = context.getProperty(MAX_WAIT_TIME).asTimePeriod(TimeUnit.MILLISECONDS);
-        final Integer maxTotal = context.getProperty(MAX_TOTAL_CONNECTIONS).asInteger();
+        final String user = context.getProperty(DB_USER).evaluateAttributeExpressions().getValue();
+        final String passw = context.getProperty(DB_PASSWORD).evaluateAttributeExpressions().getValue();
+        final Long maxWaitMillis = context.getProperty(MAX_WAIT_TIME).evaluateAttributeExpressions().asTimePeriod(TimeUnit.MILLISECONDS);
+        final Integer maxTotal = context.getProperty(MAX_TOTAL_CONNECTIONS).evaluateAttributeExpressions().asInteger();
 
         dataSource = new BasicDataSource();
         dataSource.setDriverClassName(drv);
 
-        final String dburl = context.getProperty(DATABASE_URL).getValue();
+        connectionUrl = context.getProperty(DATABASE_URL).evaluateAttributeExpressions().getValue();
 
         dataSource.setMaxWait(maxWaitMillis);
         dataSource.setMaxActive(maxTotal);
@@ -252,7 +259,7 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
             dataSource.setTestOnBorrow(true);
         }
 
-        dataSource.setUrl(dburl);
+        dataSource.setUrl(connectionUrl);
         dataSource.setUsername(user);
         dataSource.setPassword(passw);
     }
@@ -276,13 +283,16 @@ public class HiveConnectionPool extends AbstractControllerService implements Hiv
     public Connection getConnection() throws ProcessException {
         try {
             if (ugi != null) {
-                return ugi.doAs(new PrivilegedExceptionAction<Connection>() {
-                    @Override
-                    public Connection run() throws Exception {
-                        return dataSource.getConnection();
+                try {
+                    return ugi.doAs((PrivilegedExceptionAction<Connection>) () -> dataSource.getConnection());
+                } catch (UndeclaredThrowableException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof SQLException) {
+                        throw (SQLException) cause;
+                    } else {
+                        throw e;
                     }
-                });
-
+                }
             } else {
                 getLogger().info("Simple Authentication");
                 return dataSource.getConnection();

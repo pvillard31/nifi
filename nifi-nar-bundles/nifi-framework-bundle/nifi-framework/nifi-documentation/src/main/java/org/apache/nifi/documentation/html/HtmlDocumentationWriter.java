@@ -18,17 +18,24 @@ package org.apache.nifi.documentation.html;
 
 import org.apache.nifi.annotation.behavior.DynamicProperties;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
+import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.Restricted;
 import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.DeprecationNotice;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.bundle.Bundle;
+import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.ConfigurableComponent;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.controller.ControllerService;
 import org.apache.nifi.documentation.DocumentationWriter;
 import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.xml.stream.FactoryConfigurationError;
 import javax.xml.stream.XMLOutputFactory;
@@ -48,6 +55,8 @@ import java.util.Set;
  *
  */
 public class HtmlDocumentationWriter implements DocumentationWriter {
+
+    public static final Logger LOGGER = LoggerFactory.getLogger(HtmlDocumentationWriter.class);
 
     /**
      * The filename where additional user specified information may be stored.
@@ -91,11 +100,17 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
 
         xmlStreamWriter.writeStartElement("link");
         xmlStreamWriter.writeAttribute("rel", "stylesheet");
-        xmlStreamWriter.writeAttribute("href", "../../css/component-usage.css");
+        xmlStreamWriter.writeAttribute("href", "/nifi-docs/css/component-usage.css");
         xmlStreamWriter.writeAttribute("type", "text/css");
         xmlStreamWriter.writeEndElement();
-
         xmlStreamWriter.writeEndElement();
+
+        xmlStreamWriter.writeStartElement("script");
+        xmlStreamWriter.writeAttribute("type", "text/javascript");
+        xmlStreamWriter.writeCharacters("window.onload = function(){if(self==top) { " +
+                "document.getElementById('nameHeader').style.display = \"inherit\"; } }" );
+        xmlStreamWriter.writeEndElement();
+
     }
 
     /**
@@ -123,6 +138,8 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
             final XMLStreamWriter xmlStreamWriter, final boolean hasAdditionalDetails)
             throws XMLStreamException {
         xmlStreamWriter.writeStartElement("body");
+        writeHeader(configurableComponent, xmlStreamWriter);
+        writeDeprecationWarning(configurableComponent, xmlStreamWriter);
         writeDescription(configurableComponent, xmlStreamWriter, hasAdditionalDetails);
         writeTags(configurableComponent, xmlStreamWriter);
         writeProperties(configurableComponent, xmlStreamWriter);
@@ -130,8 +147,57 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
         writeAdditionalBodyInfo(configurableComponent, xmlStreamWriter);
         writeStatefulInfo(configurableComponent, xmlStreamWriter);
         writeRestrictedInfo(configurableComponent, xmlStreamWriter);
+        writeInputRequirementInfo(configurableComponent, xmlStreamWriter);
         writeSeeAlso(configurableComponent, xmlStreamWriter);
         xmlStreamWriter.writeEndElement();
+    }
+
+    /**
+     * Write the header to be displayed when loaded outside an iframe.
+     *
+     * @param configurableComponent the component to describe
+     * @param xmlStreamWriter the stream writer to use
+     * @throws XMLStreamException thrown if there was a problem writing the XML
+     */
+    private void writeHeader(ConfigurableComponent configurableComponent, XMLStreamWriter xmlStreamWriter)
+            throws XMLStreamException {
+        xmlStreamWriter.writeStartElement("h1");
+        xmlStreamWriter.writeAttribute("id", "nameHeader");
+        // Style will be overwritten on load if needed
+        xmlStreamWriter.writeAttribute("style", "display: none;");
+        xmlStreamWriter.writeCharacters(getTitle(configurableComponent));
+        xmlStreamWriter.writeEndElement();
+    }
+
+    /**
+     * Add in the documentation information regarding the component whether it accepts an
+     * incoming relationship or not.
+     *
+     * @param configurableComponent the component to describe
+     * @param xmlStreamWriter the stream writer to use
+     * @throws XMLStreamException thrown if there was a problem writing the XML
+     */
+    private void writeInputRequirementInfo(ConfigurableComponent configurableComponent, XMLStreamWriter xmlStreamWriter)
+            throws XMLStreamException {
+        final InputRequirement inputRequirement = configurableComponent.getClass().getAnnotation(InputRequirement.class);
+
+        if(inputRequirement != null) {
+            writeSimpleElement(xmlStreamWriter, "h3", "Input requirement: ");
+            switch (inputRequirement.value()) {
+                case INPUT_FORBIDDEN:
+                    xmlStreamWriter.writeCharacters("This component does not allow an incoming relationship.");
+                    break;
+                case INPUT_ALLOWED:
+                    xmlStreamWriter.writeCharacters("This component allows an incoming relationship.");
+                    break;
+                case INPUT_REQUIRED:
+                    xmlStreamWriter.writeCharacters("This component requires an incoming relationship.");
+                    break;
+                default:
+                    xmlStreamWriter.writeCharacters("This component does not have input requirement.");
+                    break;
+            }
+        }
     }
 
     /**
@@ -187,6 +253,50 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
     }
 
     /**
+     * Writes a warning about the deprecation of a component.
+     *
+     * @param configurableComponent the component to describe
+     * @param xmlStreamWriter the stream writer
+     * @throws XMLStreamException thrown if there was a problem writing to the
+     * XML stream
+     */
+    private void writeDeprecationWarning(final ConfigurableComponent configurableComponent,
+                                         final XMLStreamWriter xmlStreamWriter) throws XMLStreamException {
+        final DeprecationNotice deprecationNotice = configurableComponent.getClass().getAnnotation(DeprecationNotice.class);
+        if (deprecationNotice != null) {
+            xmlStreamWriter.writeStartElement("h2");
+            xmlStreamWriter.writeCharacters("Deprecation notice: ");
+            xmlStreamWriter.writeEndElement();
+            xmlStreamWriter.writeStartElement("p");
+
+            xmlStreamWriter.writeCharacters("");
+            if (!StringUtils.isEmpty(deprecationNotice.reason())) {
+                xmlStreamWriter.writeCharacters(deprecationNotice.reason());
+            } else {
+                // Write a default note
+                xmlStreamWriter.writeCharacters("Please be aware this processor is deprecated and may be removed in " +
+                        "the near future.");
+            }
+            xmlStreamWriter.writeEndElement();
+            xmlStreamWriter.writeStartElement("p");
+            xmlStreamWriter.writeCharacters("Please consider using one the following alternatives: ");
+
+
+            Class<? extends ConfigurableComponent>[] componentNames = deprecationNotice.alternatives();
+            String[] classNames = deprecationNotice.classNames();
+
+            if (componentNames.length > 0 || classNames.length > 0) {
+                // Write alternatives
+                iterateAndLinkComponents(xmlStreamWriter, componentNames, classNames, ",");
+            } else {
+                xmlStreamWriter.writeCharacters("No alternative components suggested.");
+            }
+
+            xmlStreamWriter.writeEndElement();
+        }
+    }
+
+    /**
      * Writes the list of components that may be linked from this component.
      *
      * @param configurableComponent the component to describe
@@ -199,30 +309,16 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
         if (seeAlso != null) {
             writeSimpleElement(xmlStreamWriter, "h3", "See Also:");
             xmlStreamWriter.writeStartElement("p");
-            int index = 0;
-            for (final Class<? extends ConfigurableComponent> linkedComponent : seeAlso.value()) {
-                if (index != 0) {
-                    xmlStreamWriter.writeCharacters(", ");
-                }
 
-                writeLinkForComponent(xmlStreamWriter, linkedComponent);
-
-                ++index;
+            Class<? extends ConfigurableComponent>[] componentNames = seeAlso.value();
+            String[] classNames = seeAlso.classNames();
+            if (componentNames.length > 0 || classNames.length > 0) {
+                // Write alternatives
+                iterateAndLinkComponents(xmlStreamWriter, componentNames, classNames, ", ");
+            } else {
+                xmlStreamWriter.writeCharacters("No tags provided.");
             }
 
-            for (final String linkedComponent : seeAlso.classNames()) {
-                if (index != 0) {
-                    xmlStreamWriter.writeCharacters(", ");
-                }
-
-                final String link = "../" + linkedComponent + "/index.html";
-
-                final int indexOfLastPeriod = linkedComponent.lastIndexOf(".") + 1;
-
-                writeLink(xmlStreamWriter, linkedComponent.substring(indexOfLastPeriod), link);
-
-                ++index;
-            }
             xmlStreamWriter.writeEndElement();
         }
     }
@@ -252,7 +348,7 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
             final String tagString = join(tags.value(), ", ");
             xmlStreamWriter.writeCharacters(tagString);
         } else {
-            xmlStreamWriter.writeCharacters("None.");
+            xmlStreamWriter.writeCharacters("No tags provided.");
         }
         xmlStreamWriter.writeEndElement();
     }
@@ -342,7 +438,7 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
                     xmlStreamWriter.writeCharacters(", ");
                 }
                 xmlStreamWriter.writeCharacters("whether a property supports the ");
-                writeLink(xmlStreamWriter, "NiFi Expression Language", "../../html/expression-language-guide.html");
+                writeLink(xmlStreamWriter, "NiFi Expression Language", "/nifi-docs/html/expression-language-guide.html");
             }
             if (containsSensitiveProperties) {
                 xmlStreamWriter.writeCharacters(", and whether a property is considered " + "\"sensitive\", meaning that its value will be encrypted. Before entering a "
@@ -500,7 +596,7 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
             throws XMLStreamException {
         xmlStreamWriter.writeCharacters(" ");
         xmlStreamWriter.writeStartElement("img");
-        xmlStreamWriter.writeAttribute("src", "../../html/images/iconInfo.png");
+        xmlStreamWriter.writeAttribute("src", "/nifi-docs/html/images/iconInfo.png");
         xmlStreamWriter.writeAttribute("alt", description);
         xmlStreamWriter.writeAttribute("title", description);
         xmlStreamWriter.writeEndElement();
@@ -538,15 +634,16 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
             xmlStreamWriter.writeEmptyElement("br");
             xmlStreamWriter.writeCharacters(controllerServiceClass.getSimpleName());
 
-            final List<Class<? extends ControllerService>> implementations = lookupControllerServiceImpls(controllerServiceClass);
+            final List<Class<? extends ControllerService>> implementationList = lookupControllerServiceImpls(controllerServiceClass);
+
+            // Convert it into an array before proceeding
+            Class<? extends ControllerService>[] implementations = implementationList.stream().toArray(Class[]::new);
+
             xmlStreamWriter.writeEmptyElement("br");
-            if (implementations.size() > 0) {
-                final String title = implementations.size() > 1 ? "Implementations: " : "Implementation:";
+            if (implementations.length > 0) {
+                final String title = implementations.length > 1 ? "Implementations: " : "Implementation:";
                 writeSimpleElement(xmlStreamWriter, "strong", title);
-                for (int i = 0; i < implementations.size(); i++) {
-                    xmlStreamWriter.writeEmptyElement("br");
-                    writeLinkForComponent(xmlStreamWriter, implementations.get(i));
-                }
+                iterateAndLinkComponents(xmlStreamWriter, implementations, null,  "<br>");
             } else {
                 xmlStreamWriter.writeCharacters("No implementations found.");
             }
@@ -631,17 +728,6 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
     }
 
     /**
-     * Writes a link to another configurable component
-     *
-     * @param xmlStreamWriter the xml stream writer
-     * @param clazz the configurable component to link to
-     * @throws XMLStreamException thrown if there is a problem writing the XML
-     */
-    protected void writeLinkForComponent(final XMLStreamWriter xmlStreamWriter, final Class<?> clazz) throws XMLStreamException {
-        writeLink(xmlStreamWriter, clazz.getSimpleName(), "../" + clazz.getCanonicalName() + "/index.html");
-    }
-
-    /**
      * Uses the {@link ExtensionManager} to discover any {@link ControllerService} implementations that implement a specific
      * ControllerService API.
      *
@@ -666,4 +752,94 @@ public class HtmlDocumentationWriter implements DocumentationWriter {
 
         return implementations;
     }
+
+    /**
+     * Writes a link to another configurable component
+     *
+     * @param xmlStreamWriter the xml stream writer
+     * @param linkedComponents the array of configurable component to link to
+     * @param classNames the array of class names in string format to link to
+     * @param separator a separator used to split the values (in case more than 1. If the separator is enclosed in
+     *                  between "<" and ">" (.e.g "<br>" it is treated as a tag and written to the xmlStreamWriter as an
+     *                  empty tag
+     * @throws XMLStreamException thrown if there is a problem writing the XML
+     */
+    protected void iterateAndLinkComponents(final XMLStreamWriter xmlStreamWriter, final Class<? extends ConfigurableComponent>[] linkedComponents, String[] classNames, String separator)
+            throws XMLStreamException {
+
+        // Treat the the possible separators
+        boolean separatorIsElement;
+
+        if (separator.startsWith("<") && separator.endsWith(">")) {
+            separatorIsElement = true;
+        } else {
+            separatorIsElement = false;
+        }
+        // Whatever the result, strip the possible < and > characters
+        separator = separator.replaceAll("\\<([^>]*)>","$1");
+
+        int index = 0;
+        for (final Class<? extends ConfigurableComponent> linkedComponent : linkedComponents ) {
+            final String linkedComponentName = linkedComponent.getName();
+            final List<Bundle> linkedComponentBundles = ExtensionManager.getBundles(linkedComponentName);
+            if (linkedComponentBundles != null && linkedComponentBundles.size() > 0) {
+                final Bundle firstLinkedComponentBundle = linkedComponentBundles.get(0);
+                final BundleCoordinate coordinate = firstLinkedComponentBundle.getBundleDetails().getCoordinate();
+
+                final String group = coordinate.getGroup();
+                final String id = coordinate.getId();
+                final String version = coordinate.getVersion();
+
+
+
+                if (index != 0) {
+                    if (separatorIsElement) {
+                        xmlStreamWriter.writeEmptyElement(separator);
+                    } else {
+                        xmlStreamWriter.writeCharacters(separator);
+                    }
+                }
+                writeLink(xmlStreamWriter, linkedComponent.getSimpleName(), "/nifi-docs/components/" + group + "/" + id + "/" + version + "/" + linkedComponent.getCanonicalName() + "/index.html");
+
+                ++index;
+            } else {
+                LOGGER.warn("Could not link to {} because no bundles were found", new Object[] {linkedComponentName});
+            }
+        }
+
+        if (classNames!= null) {
+            for (final String className : classNames) {
+                if (index != 0) {
+                    if (separatorIsElement) {
+                        xmlStreamWriter.writeEmptyElement(separator);
+                    } else {
+                        xmlStreamWriter.writeCharacters(separator);
+                    }
+                }
+
+                final List<Bundle> linkedComponentBundles = ExtensionManager.getBundles(className);
+
+                if (linkedComponentBundles != null && linkedComponentBundles.size() > 0) {
+                    final Bundle firstBundle = linkedComponentBundles.get(0);
+                    final BundleCoordinate firstCoordinate = firstBundle.getBundleDetails().getCoordinate();
+
+                    final String group = firstCoordinate.getGroup();
+                    final String id = firstCoordinate.getId();
+                    final String version = firstCoordinate.getVersion();
+
+                    final String link = "/nifi-docs/components/" + group + "/" + id + "/" + version + "/" + className + "/index.html";
+
+                    final int indexOfLastPeriod = className.lastIndexOf(".") + 1;
+
+                    writeLink(xmlStreamWriter, className.substring(indexOfLastPeriod), link);
+
+                    ++index;
+                } else {
+                    LOGGER.warn("Could not link to {} because no bundles were found", new Object[] {className});
+                }
+            }
+        }
+
+    }
+
 }

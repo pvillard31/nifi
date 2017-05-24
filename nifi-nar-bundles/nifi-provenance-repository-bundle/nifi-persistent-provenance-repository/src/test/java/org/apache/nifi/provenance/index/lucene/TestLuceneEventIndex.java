@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.nifi.provenance.index.lucene;
 
 import static org.junit.Assert.assertEquals;
@@ -57,6 +56,7 @@ import org.apache.nifi.provenance.serialization.StorageSummary;
 import org.apache.nifi.provenance.store.ArrayListEventStore;
 import org.apache.nifi.provenance.store.EventStore;
 import org.apache.nifi.provenance.store.StorageResult;
+import static org.junit.Assume.assumeFalse;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -77,9 +77,13 @@ public class TestLuceneEventIndex {
         System.setProperty("org.slf4j.simpleLogger.log.org.apache.nifi", "DEBUG");
     }
 
+    private boolean isWindowsEnvironment() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testGetMinimumIdToReindex() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
@@ -102,8 +106,9 @@ public class TestLuceneEventIndex {
         assertTrue(id >= 30000L);
     }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testUnauthorizedEventsGetPlaceholdersForLineage() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
@@ -138,8 +143,9 @@ public class TestLuceneEventIndex {
         }
     }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testUnauthorizedEventsGetPlaceholdersForExpandChildren() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
@@ -155,18 +161,18 @@ public class TestLuceneEventIndex {
         final Map<String, String> updatedAttributes = new HashMap<>();
         updatedAttributes.put("updated", "true");
         final ProvenanceEventRecord fork = new StandardProvenanceEventRecord.Builder()
-            .setEventType(ProvenanceEventType.FORK)
-            .setAttributes(previousAttributes, updatedAttributes)
-            .addChildFlowFile("1234")
-            .setComponentId("component-1")
-            .setComponentType("unit test")
-            .setEventId(idGenerator.getAndIncrement())
-            .setEventTime(System.currentTimeMillis())
-            .setFlowFileEntryDate(System.currentTimeMillis())
-            .setFlowFileUUID("4444")
-            .setLineageStartDate(System.currentTimeMillis())
-            .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
-            .build();
+                .setEventType(ProvenanceEventType.FORK)
+                .setAttributes(previousAttributes, updatedAttributes)
+                .addChildFlowFile("1234")
+                .setComponentId("component-1")
+                .setComponentType("unit test")
+                .setEventId(idGenerator.getAndIncrement())
+                .setEventTime(System.currentTimeMillis())
+                .setFlowFileEntryDate(System.currentTimeMillis())
+                .setFlowFileUUID("4444")
+                .setLineageStartDate(System.currentTimeMillis())
+                .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
+                .build();
 
         index.addEvents(eventStore.addEvent(firstEvent).getStorageLocations());
         index.addEvents(eventStore.addEvent(fork).getStorageLocations());
@@ -205,16 +211,17 @@ public class TestLuceneEventIndex {
         assertEquals(4L, nodes.stream().filter(n -> n.getNodeType() == LineageNodeType.PROVENANCE_EVENT_NODE).count());
 
         final Map<ProvenanceEventType, List<LineageNode>> eventMap = nodes.stream()
-            .filter(n -> n.getNodeType() == LineageNodeType.PROVENANCE_EVENT_NODE)
-            .collect(Collectors.groupingBy(n -> ((ProvenanceEventLineageNode) n).getEventType()));
+                .filter(n -> n.getNodeType() == LineageNodeType.PROVENANCE_EVENT_NODE)
+                .collect(Collectors.groupingBy(n -> ((ProvenanceEventLineageNode) n).getEventType()));
 
         assertEquals(2, eventMap.size());
         assertEquals(1, eventMap.get(ProvenanceEventType.FORK).size());
         assertEquals(3, eventMap.get(ProvenanceEventType.UNKNOWN).size());
     }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testUnauthorizedEventsGetPlaceholdersForFindParents() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
@@ -230,19 +237,19 @@ public class TestLuceneEventIndex {
         final Map<String, String> updatedAttributes = new HashMap<>();
         updatedAttributes.put("updated", "true");
         final ProvenanceEventRecord join = new StandardProvenanceEventRecord.Builder()
-            .setEventType(ProvenanceEventType.JOIN)
-            .setAttributes(previousAttributes, updatedAttributes)
-            .addParentUuid("4444")
-            .addChildFlowFile("1234")
-            .setComponentId("component-1")
-            .setComponentType("unit test")
-            .setEventId(idGenerator.getAndIncrement())
-            .setEventTime(System.currentTimeMillis())
-            .setFlowFileEntryDate(System.currentTimeMillis())
-            .setFlowFileUUID("1234")
-            .setLineageStartDate(System.currentTimeMillis())
-            .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
-            .build();
+                .setEventType(ProvenanceEventType.JOIN)
+                .setAttributes(previousAttributes, updatedAttributes)
+                .addParentUuid("4444")
+                .addChildFlowFile("1234")
+                .setComponentId("component-1")
+                .setComponentType("unit test")
+                .setEventId(idGenerator.getAndIncrement())
+                .setEventTime(System.currentTimeMillis())
+                .setFlowFileEntryDate(System.currentTimeMillis())
+                .setFlowFileUUID("1234")
+                .setLineageStartDate(System.currentTimeMillis())
+                .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
+                .build();
 
         index.addEvents(eventStore.addEvent(firstEvent).getStorageLocations());
         index.addEvents(eventStore.addEvent(join).getStorageLocations());
@@ -278,8 +285,8 @@ public class TestLuceneEventIndex {
         assertEquals(2, nodes.size());
 
         final Map<ProvenanceEventType, List<LineageNode>> eventMap = nodes.stream()
-            .filter(n -> n.getNodeType() == LineageNodeType.PROVENANCE_EVENT_NODE)
-            .collect(Collectors.groupingBy(n -> ((ProvenanceEventLineageNode) n).getEventType()));
+                .filter(n -> n.getNodeType() == LineageNodeType.PROVENANCE_EVENT_NODE)
+                .collect(Collectors.groupingBy(n -> ((ProvenanceEventLineageNode) n).getEventType()));
 
         assertEquals(2, eventMap.size());
         assertEquals(1, eventMap.get(ProvenanceEventType.JOIN).size());
@@ -288,8 +295,9 @@ public class TestLuceneEventIndex {
         assertEquals("4444", eventMap.get(ProvenanceEventType.UNKNOWN).get(0).getFlowFileUuid());
     }
 
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testUnauthorizedEventsGetFilteredForQuery() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
@@ -328,7 +336,6 @@ public class TestLuceneEventIndex {
         assertEquals(2, events.size());
     }
 
-
     private NiFiUser createUser() {
         return new NiFiUser() {
             @Override
@@ -353,8 +360,7 @@ public class TestLuceneEventIndex {
         };
     }
 
-
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void testExpiration() throws InterruptedException, IOException {
         final RepositoryConfiguration repoConfig = createConfig(1);
         repoConfig.setDesiredIndexSize(1L);
@@ -395,9 +401,9 @@ public class TestLuceneEventIndex {
         return new StorageSummary(eventId, "1.prov", "1", 1, 2L, 2L);
     }
 
-
-    @Test(timeout = 5000)
+    @Test(timeout = 60000)
     public void addThenQueryWithEmptyQuery() throws InterruptedException {
+        assumeFalse(isWindowsEnvironment());
         final RepositoryConfiguration repoConfig = createConfig();
         final IndexManager indexManager = new SimpleIndexManager(repoConfig);
 
@@ -521,17 +527,17 @@ public class TestLuceneEventIndex {
         updatedAttributes.put("updated", "true");
 
         final ProvenanceEventRecord event = new StandardProvenanceEventRecord.Builder()
-            .setEventType(ProvenanceEventType.CONTENT_MODIFIED)
-            .setAttributes(previousAttributes, updatedAttributes)
-            .setComponentId("component-1")
-            .setComponentType("unit test")
-            .setEventId(idGenerator.getAndIncrement())
-            .setEventTime(timestamp)
-            .setFlowFileEntryDate(timestamp)
-            .setFlowFileUUID(uuid)
-            .setLineageStartDate(timestamp)
-            .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
-            .build();
+                .setEventType(ProvenanceEventType.CONTENT_MODIFIED)
+                .setAttributes(previousAttributes, updatedAttributes)
+                .setComponentId("component-1")
+                .setComponentType("unit test")
+                .setEventId(idGenerator.getAndIncrement())
+                .setEventTime(timestamp)
+                .setFlowFileEntryDate(timestamp)
+                .setFlowFileUUID(uuid)
+                .setLineageStartDate(timestamp)
+                .setCurrentContentClaim("container", "section", "unit-test-id", 0L, 1024L)
+                .build();
 
         return event;
     }

@@ -16,6 +16,7 @@
  */
 package org.apache.nifi.processors.standard;
 
+import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
@@ -39,6 +40,7 @@ import java.sql.Timestamp;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -141,16 +143,6 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
             .expressionLanguageSupported(true)
             .build();
 
-    public static final PropertyDescriptor NORMALIZE_NAMES_FOR_AVRO = new PropertyDescriptor.Builder()
-            .name("dbf-normalize")
-            .displayName("Normalize Table/Column Names")
-            .description("Whether to change non-Avro-compatible characters in column names to Avro-compatible characters. For example, colons and periods "
-                    + "will be changed to underscores in order to build a valid Avro record.")
-            .allowableValues("true", "false")
-            .defaultValue("false")
-            .required(true)
-            .build();
-
     protected List<PropertyDescriptor> propDescriptors;
 
     // The delimiter to use when referencing qualified names (such as table@!@column in the state map)
@@ -175,16 +167,20 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
 
     static {
         // Load the DatabaseAdapters
+        ArrayList<AllowableValue> dbAdapterValues = new ArrayList<>();
         ServiceLoader<DatabaseAdapter> dbAdapterLoader = ServiceLoader.load(DatabaseAdapter.class);
-        dbAdapterLoader.forEach(it -> dbAdapters.put(it.getName(), it));
+        dbAdapterLoader.forEach(it -> {
+            dbAdapters.put(it.getName(), it);
+            dbAdapterValues.add(new AllowableValue(it.getName(), it.getName(), it.getDescription()));
+        });
 
         DB_TYPE = new PropertyDescriptor.Builder()
                 .name("db-fetch-db-type")
                 .displayName("Database Type")
                 .description("The type/flavor of database, used for generating database-specific code. In many cases the Generic type "
                         + "should suffice, but some databases (such as Oracle) require custom SQL clauses. ")
-                .allowableValues(dbAdapters.keySet())
-                .defaultValue(dbAdapters.values().stream().findFirst().get().getName())
+                .allowableValues(dbAdapterValues.toArray(new AllowableValue[dbAdapterValues.size()]))
+                .defaultValue("Generic")
                 .required(true)
                 .build();
     }
@@ -345,26 +341,20 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
                 break;
 
             case TIMESTAMP:
-                // Oracle timestamp queries must use literals in java.sql.Date format
-                if ("Oracle".equals(databaseType)) {
-                    Date rawColOracleTimestampValue = resultSet.getDate(columnIndex);
-                    java.sql.Date oracleTimestampValue = new java.sql.Date(rawColOracleTimestampValue.getTime());
-                    java.sql.Date maxOracleTimestampValue = null;
-                    if (maxValueString != null) {
-                        maxOracleTimestampValue = java.sql.Date.valueOf(maxValueString);
-                    }
-                    if (maxOracleTimestampValue == null || oracleTimestampValue.after(maxOracleTimestampValue)) {
-                        return oracleTimestampValue.toString();
-                    }
-                } else {
-                    Timestamp colTimestampValue = resultSet.getTimestamp(columnIndex);
-                    java.sql.Timestamp maxTimestampValue = null;
-                    if (maxValueString != null) {
+                Timestamp colTimestampValue = resultSet.getTimestamp(columnIndex);
+                java.sql.Timestamp maxTimestampValue = null;
+                if (maxValueString != null) {
+                    // For backwards compatibility, the type might be TIMESTAMP but the state value is in DATE format. This should be a one-time occurrence as the next maximum value
+                    // should be stored as a full timestamp. Even so, check to see if the value is missing time-of-day information, and use the "date" coercion rather than the
+                    // "timestamp" coercion in that case
+                    try {
                         maxTimestampValue = java.sql.Timestamp.valueOf(maxValueString);
+                    } catch (IllegalArgumentException iae) {
+                        maxTimestampValue = new java.sql.Timestamp(java.sql.Date.valueOf(maxValueString).getTime());
                     }
-                    if (maxTimestampValue == null || colTimestampValue.after(maxTimestampValue)) {
-                        return colTimestampValue.toString();
-                    }
+                }
+                if (maxTimestampValue == null || colTimestampValue.after(maxTimestampValue)) {
+                    return colTimestampValue.toString();
                 }
                 break;
 
@@ -405,9 +395,15 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
             case TIME:
                 return "'" + value + "'";
             case TIMESTAMP:
-                // Timestamp literals in Oracle need to be cast with TO_DATE
                 if ("Oracle".equals(databaseType)) {
-                    return "to_date('" + value + "', 'yyyy-mm-dd HH24:MI:SS')";
+                    // For backwards compatibility, the type might be TIMESTAMP but the state value is in DATE format. This should be a one-time occurrence as the next maximum value
+                    // should be stored as a full timestamp. Even so, check to see if the value is missing time-of-day information, and use the "date" coercion rather than the
+                    // "timestamp" coercion in that case
+                    if (value.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                        return "date '" + value + "'";
+                    } else {
+                        return "timestamp '" + value + "'";
+                    }
                 } else {
                     return "'" + value + "'";
                 }

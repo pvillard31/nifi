@@ -52,6 +52,7 @@ import org.apache.nifi.cluster.event.NodeEvent;
 import org.apache.nifi.cluster.manager.exception.IllegalNodeDeletionException;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.protocol.NodeIdentifier;
+import org.apache.nifi.components.ConfigurableComponent;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.components.Validator;
@@ -61,7 +62,6 @@ import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.connectable.Funnel;
 import org.apache.nifi.connectable.Port;
 import org.apache.nifi.controller.ConfiguredComponent;
-import org.apache.nifi.controller.ControllerService;
 import org.apache.nifi.controller.Counter;
 import org.apache.nifi.controller.FlowController;
 import org.apache.nifi.controller.ProcessorNode;
@@ -77,6 +77,7 @@ import org.apache.nifi.controller.service.ControllerServiceReference;
 import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
 import org.apache.nifi.diagnostics.SystemDiagnostics;
+import org.apache.nifi.events.BulletinFactory;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.ProcessGroupCounts;
 import org.apache.nifi.groups.RemoteProcessGroup;
@@ -396,11 +397,18 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public void verifyCreateProcessor(ProcessorDTO processorDTO) {
+        processorDAO.verifyCreate(processorDTO);
+    }
+
+    @Override
     public void verifyUpdateProcessor(final ProcessorDTO processorDTO) {
         // if group does not exist, then the update request is likely creating it
         // so we don't verify since it will fail
         if (processorDAO.hasProcessor(processorDTO.getId())) {
             processorDAO.verifyUpdate(processorDTO);
+        } else {
+            verifyCreateProcessor(processorDTO);
         }
     }
 
@@ -444,11 +452,18 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public void verifyCreateControllerService(ControllerServiceDTO controllerServiceDTO) {
+        controllerServiceDAO.verifyCreate(controllerServiceDTO);
+    }
+
+    @Override
     public void verifyUpdateControllerService(final ControllerServiceDTO controllerServiceDTO) {
         // if service does not exist, then the update request is likely creating it
         // so we don't verify since it will fail
         if (controllerServiceDAO.hasControllerService(controllerServiceDTO.getId())) {
             controllerServiceDAO.verifyUpdate(controllerServiceDTO);
+        } else {
+            verifyCreateControllerService(controllerServiceDTO);
         }
     }
 
@@ -463,11 +478,18 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public void verifyCreateReportingTask(ReportingTaskDTO reportingTaskDTO) {
+        reportingTaskDAO.verifyCreate(reportingTaskDTO);
+    }
+
+    @Override
     public void verifyUpdateReportingTask(final ReportingTaskDTO reportingTaskDTO) {
         // if tasks does not exist, then the update request is likely creating it
         // so we don't verify since it will fail
         if (reportingTaskDAO.hasReportingTask(reportingTaskDTO.getId())) {
             reportingTaskDAO.verifyUpdate(reportingTaskDTO);
+        } else {
+            verifyCreateReportingTask(reportingTaskDTO);
         }
     }
 
@@ -1357,6 +1379,12 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         });
     }
 
+    @Override
+    public BulletinEntity createBulletin(final BulletinDTO bulletinDTO, final Boolean canRead){
+        final Bulletin bulletin = BulletinFactory.createBulletin(bulletinDTO.getCategory(),bulletinDTO.getLevel(),bulletinDTO.getMessage());
+        bulletinRepository.addBulletin(bulletin);
+        return entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin),canRead);
+    }
 
     @Override
     public FunnelEntity createFunnel(final Revision revision, final String groupId, final FunnelDTO funnelDTO) {
@@ -1657,8 +1685,8 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     }
 
                     try {
-                        final ControllerService controllerService = controllerFacade.createTemporaryControllerService(dto.getType()).getControllerServiceImplementation();
-                        controllerService.getPropertyDescriptors().forEach(descriptor -> {
+                        final ConfigurableComponent configurableComponent = controllerFacade.getTemporaryComponent(dto.getType(), dto.getBundle());
+                        configurableComponent.getPropertyDescriptors().forEach(descriptor -> {
                             if (dto.getProperties().get(descriptor.getName()) == null) {
                                 dto.getProperties().put(descriptor.getName(), descriptor.getDefaultValue());
                             }
@@ -1681,8 +1709,8 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     }
 
                     try {
-                        final ProcessorNode processorNode = controllerFacade.createTemporaryProcessor(dto.getType());
-                        processorNode.getPropertyDescriptors().forEach(descriptor -> {
+                        final ConfigurableComponent configurableComponent = controllerFacade.getTemporaryComponent(dto.getType(), dto.getBundle());
+                        configurableComponent.getPropertyDescriptors().forEach(descriptor -> {
                             if (config.getProperties().get(descriptor.getName()) == null) {
                                 config.getProperties().put(descriptor.getName(), descriptor.getDefaultValue());
                             }
@@ -1774,10 +1802,12 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
-    public FlowEntity createTemplateInstance(final String groupId, final Double originX, final Double originY, final String templateId, final String idGenerationSeed) {
+    public FlowEntity createTemplateInstance(final String groupId, final Double originX, final Double originY, final String templateEncodingVersion,
+                                             final FlowSnippetDTO requestSnippet, final String idGenerationSeed) {
+
         // instantiate the template - there is no need to make another copy of the flow snippet since the actual template
         // was copied and this dto is only used to instantiate it's components (which as already completed)
-        final FlowSnippetDTO snippet = templateDAO.instantiateTemplate(groupId, originX, originY, templateId, idGenerationSeed);
+        final FlowSnippetDTO snippet = templateDAO.instantiateTemplate(groupId, originX, originY, templateEncodingVersion, requestSnippet, idGenerationSeed);
 
         // save the flow
         controllerFacade.save();
@@ -1949,7 +1979,9 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
      */
     private ControllerServiceReferencingComponentsEntity createControllerServiceReferencingComponentsEntity(
             final ControllerServiceReference reference, final Map<String, Revision> revisions) {
-        return createControllerServiceReferencingComponentsEntity(reference, revisions, new HashSet<>());
+        final Set<ControllerServiceNode> visited = new HashSet<>();
+        visited.add(reference.getReferencedComponent());
+        return createControllerServiceReferencingComponentsEntity(reference, revisions, visited);
     }
 
     /**
@@ -1984,6 +2016,9 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 // indicate if we've hit a cycle
                 dto.setReferenceCycle(visited.contains(node));
 
+                // mark node as visited before building the reference cycle
+                visited.add(node);
+
                 // if we haven't encountered this service before include it's referencing components
                 if (!dto.getReferenceCycle()) {
                     final ControllerServiceReference refReferences = node.getReferences();
@@ -1994,9 +2029,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     final ControllerServiceReferencingComponentsEntity references = createControllerServiceReferencingComponentsEntity(refReferences, referencingRevisions, visited);
                     dto.setReferencingComponents(references.getControllerServiceReferencingComponents());
                 }
-
-                // mark node as visited
-                visited.add(node);
             }
 
             componentEntities.add(entityFactory.createControllerServiceReferencingComponentEntity(dto, revisionDto, permissions));
@@ -2365,18 +2397,19 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
-    public Set<DocumentedTypeDTO> getProcessorTypes() {
-        return controllerFacade.getFlowFileProcessorTypes();
+    public Set<DocumentedTypeDTO> getProcessorTypes(final String bundleGroup, final String bundleArtifact, final String type) {
+        return controllerFacade.getFlowFileProcessorTypes(bundleGroup, bundleArtifact, type);
     }
 
     @Override
-    public Set<DocumentedTypeDTO> getControllerServiceTypes(final String serviceType) {
-        return controllerFacade.getControllerServiceTypes(serviceType);
+    public Set<DocumentedTypeDTO> getControllerServiceTypes(final String serviceType, final String serviceBundleGroup, final String serviceBundleArtifact, final String serviceBundleVersion,
+                                                            final String bundleGroup, final String bundleArtifact, final String type) {
+        return controllerFacade.getControllerServiceTypes(serviceType, serviceBundleGroup, serviceBundleArtifact, serviceBundleVersion, bundleGroup, bundleArtifact, type);
     }
 
     @Override
-    public Set<DocumentedTypeDTO> getReportingTaskTypes() {
-        return controllerFacade.getReportingTaskTypes();
+    public Set<DocumentedTypeDTO> getReportingTaskTypes(final String bundleGroup, final String bundleArtifact, final String type) {
+        return controllerFacade.getReportingTaskTypes(bundleGroup, bundleArtifact, type);
     }
 
     @Override
@@ -3126,7 +3159,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         final String sourceId = action.getSourceId();
         final Component type = action.getSourceType();
 
-        final Authorizable authorizable;
+        Authorizable authorizable;
         try {
             switch (type) {
                 case Processor:
@@ -3170,8 +3203,8 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                     throw new WebApplicationException(Response.serverError().entity("An unexpected type of component is the source of this action.").build());
             }
         } catch (final ResourceNotFoundException e) {
-            // if the underlying component is gone, disallow
-            return AuthorizationResult.denied("The component of this action is no longer in the data flow.");
+            // if the underlying component is gone, use the controller to see if permissions should be allowed
+            authorizable = controllerFacade;
         }
 
         // perform the authorization

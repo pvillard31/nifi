@@ -1097,16 +1097,18 @@
         set: function (processGroupEntities, options) {
             var selectAll = false;
             var transition = false;
+            var overrideRevisionCheck = false;
             if (nfCommon.isDefinedAndNotNull(options)) {
                 selectAll = nfCommon.isDefinedAndNotNull(options.selectAll) ? options.selectAll : selectAll;
                 transition = nfCommon.isDefinedAndNotNull(options.transition) ? options.transition : transition;
+                overrideRevisionCheck = nfCommon.isDefinedAndNotNull(options.overrideRevisionCheck) ? options.overrideRevisionCheck : overrideRevisionCheck;
             }
 
             var set = function (proposedProcessGroupEntity) {
                 var currentProcessGroupEntity = processGroupMap.get(proposedProcessGroupEntity.id);
 
                 // set the process group if appropriate due to revision and wasn't previously removed
-                if (nfClient.isNewerRevision(currentProcessGroupEntity, proposedProcessGroupEntity) && !removedCache.has(proposedProcessGroupEntity.id)) {
+                if ((nfClient.isNewerRevision(currentProcessGroupEntity, proposedProcessGroupEntity) && !removedCache.has(proposedProcessGroupEntity.id)) || overrideRevisionCheck === true) {
                     processGroupMap.set(proposedProcessGroupEntity.id, $.extend({
                         type: 'ProcessGroup',
                         dimensions: dimensions
@@ -1256,29 +1258,33 @@
          *
          * @param {string} groupId
          */
-        enterGroup: function (groupId) { 
+        enterGroup: function (groupId) {
 
             // hide the context menu
-            nfContextMenu.hide();  
+            nfContextMenu.hide();
 
             // set the new group id
-            nfCanvasUtils.setGroupId(groupId);  
+            nfCanvasUtils.setGroupId(groupId);
 
             // reload the graph
-            return nfCanvasUtils.reload().done(function () { 
+            return nfCanvasUtils.reload().done(function () {
 
                 // attempt to restore the view
-                var viewRestored = nfCanvasUtils.restoreUserView();  
+                var viewRestored = nfCanvasUtils.restoreUserView();
 
                 // if the view was not restore attempt to fit
                 if (viewRestored === false) {
-                    nfCanvasUtils.fitCanvasView();  
+                    nfCanvasUtils.fitCanvasView();
 
                     // refresh the canvas
                     nfCanvasUtils.refreshCanvasView({
                         transition: true
                     });
                 }
+
+                // update URL deep linking params
+                nfCanvasUtils.setURLParameters(groupId, d3.select());
+
             }).fail(function () {
                 nfDialog.showOkDialog({
                     headerText: 'Process Group',

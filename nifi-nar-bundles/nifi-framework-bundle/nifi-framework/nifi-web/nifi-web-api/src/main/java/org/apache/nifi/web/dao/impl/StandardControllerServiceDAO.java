@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.web.dao.impl;
 
+import org.apache.nifi.bundle.BundleCoordinate;
+import org.apache.nifi.components.ConfigurableComponent;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.controller.ConfiguredComponent;
@@ -27,12 +29,16 @@ import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.ControllerServiceProvider;
 import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.groups.ProcessGroup;
+import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.util.BundleUtils;
 import org.apache.nifi.web.NiFiCoreException;
 import org.apache.nifi.web.ResourceNotFoundException;
+import org.apache.nifi.web.api.dto.BundleDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
 import org.apache.nifi.web.dao.ComponentStateDAO;
 import org.apache.nifi.web.dao.ControllerServiceDAO;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -60,6 +66,11 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
     }
 
     @Override
+    public void verifyCreate(final ControllerServiceDTO controllerServiceDTO) {
+        verifyCreate(controllerServiceDTO.getType(), controllerServiceDTO.getBundle());
+    }
+
+    @Override
     public ControllerServiceNode createControllerService(final ControllerServiceDTO controllerServiceDTO) {
         // ensure the type is specified
         if (controllerServiceDTO.getType() == null) {
@@ -68,7 +79,9 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
 
         try {
             // create the controller service
-            final ControllerServiceNode controllerService = serviceProvider.createControllerService(controllerServiceDTO.getType(), controllerServiceDTO.getId(), true);
+            final ControllerServiceNode controllerService = serviceProvider.createControllerService(
+                    controllerServiceDTO.getType(), controllerServiceDTO.getId(), BundleUtils.getBundle(controllerServiceDTO.getType(),
+                            controllerServiceDTO.getBundle()), Collections.emptySet(), true);
 
             // ensure we can perform the update
             verifyUpdate(controllerService, controllerServiceDTO);
@@ -136,6 +149,10 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
         // perform the update
         configureControllerService(controllerService, controllerServiceDTO);
 
+        // attempt to change the underlying controller service if an updated bundle is specified
+        // updating the bundle must happen after configuring so that any additional classpath resources are set first
+        updateBundle(controllerService, controllerServiceDTO);
+
         // enable or disable as appropriate
         if (isNotNull(controllerServiceDTO.getState())) {
             final ControllerServiceState purposedControllerServiceState = ControllerServiceState.valueOf(controllerServiceDTO.getState());
@@ -151,6 +168,25 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
         }
 
         return controllerService;
+    }
+
+    private void updateBundle(final ControllerServiceNode controllerService, final ControllerServiceDTO controllerServiceDTO) {
+        final BundleDTO bundleDTO = controllerServiceDTO.getBundle();
+        if (bundleDTO != null) {
+            final BundleCoordinate incomingCoordinate = BundleUtils.getBundle(controllerService.getCanonicalClassName(), bundleDTO);
+            final BundleCoordinate existingCoordinate = controllerService.getBundleCoordinate();
+            if (!existingCoordinate.getCoordinate().equals(incomingCoordinate.getCoordinate())) {
+                try {
+                    // we need to use the property descriptors from the temp component here in case we are changing from a ghost component to a real component
+                    final ConfigurableComponent tempComponent = ExtensionManager.getTempComponent(controllerService.getCanonicalClassName(), incomingCoordinate);
+                    final Set<URL> additionalUrls = controllerService.getAdditionalClasspathResources(tempComponent.getPropertyDescriptors());
+                    flowController.reload(controllerService, controllerService.getCanonicalClassName(), incomingCoordinate, additionalUrls);
+                } catch (ControllerServiceInstantiationException e) {
+                    throw new NiFiCoreException(String.format("Unable to update controller service %s from %s to %s due to: %s",
+                            controllerServiceDTO.getId(), controllerService.getBundleCoordinate().getCoordinate(), incomingCoordinate.getCoordinate(), e.getMessage()), e);
+                }
+            }
+        }
     }
 
     @Override
@@ -242,7 +278,8 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
         if (isAnyNotNull(controllerServiceDTO.getName(),
                 controllerServiceDTO.getAnnotationData(),
                 controllerServiceDTO.getComments(),
-                controllerServiceDTO.getProperties())) {
+                controllerServiceDTO.getProperties(),
+                controllerServiceDTO.getBundle())) {
             modificationRequest = true;
 
             // validate the request
@@ -252,6 +289,14 @@ public class StandardControllerServiceDAO extends ComponentDAO implements Contro
             if (!requestValidation.isEmpty()) {
                 throw new ValidationException(requestValidation);
             }
+        }
+
+        final BundleDTO bundleDTO = controllerServiceDTO.getBundle();
+        if (bundleDTO != null) {
+            // ensures all nodes in a cluster have the bundle, throws exception if bundle not found for the given type
+            final BundleCoordinate bundleCoordinate = BundleUtils.getBundle(controllerService.getCanonicalClassName(), bundleDTO);
+            // ensure we are only changing to a bundle with the same group and id, but different version
+            controllerService.verifyCanUpdateBundle(bundleCoordinate);
         }
 
         if (modificationRequest) {

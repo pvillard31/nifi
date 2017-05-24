@@ -462,7 +462,10 @@
             var attributesContainer = $('#flowfile-attributes-container');
 
             // get any action details
-            $.each(flowFile.attributes, function (attributeName, attributeValue) {
+            var sortedAttributeNames = Object.keys(flowFile.attributes).sort();
+            sortedAttributeNames.forEach(function (attributeName) {
+                var attributeValue = flowFile.attributes[attributeName];
+
                 // create the attribute record
                 var attributeRecord = $('<div class="attribute-detail"></div>')
                     .append($('<div class="attribute-name">' + nfCommon.formatValue(attributeName) + '</div>').ellipsis())
@@ -534,21 +537,24 @@
                     sortable: false,
                     resizable: false,
                     width: 75,
-                    maxWidth: 75
+                    maxWidth: 75,
+                    formatter: nfCommon.genericValueFormatter
                 },
                 {
                     id: 'uuid',
                     name: 'UUID',
                     field: 'uuid',
                     sortable: false,
-                    resizable: true
+                    resizable: true,
+                    formatter: nfCommon.genericValueFormatter
                 },
                 {
                     id: 'filename',
                     name: 'Filename',
                     field: 'filename',
                     sortable: false,
-                    resizable: true
+                    resizable: true,
+                    formatter: nfCommon.genericValueFormatter
                 },
                 {
                     id: 'size',
@@ -594,7 +600,8 @@
                     name: 'Node',
                     field: 'clusterNodeAddress',
                     sortable: false,
-                    resizable: true
+                    resizable: true,
+                    formatter: nfCommon.genericValueFormatter
                 });
             }
 

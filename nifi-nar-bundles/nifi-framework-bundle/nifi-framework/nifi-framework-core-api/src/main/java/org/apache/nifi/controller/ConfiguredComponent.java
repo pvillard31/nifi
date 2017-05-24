@@ -24,11 +24,17 @@ import org.apache.nifi.authorization.RequestAction;
 import org.apache.nifi.authorization.resource.ComponentAuthorizable;
 import org.apache.nifi.authorization.resource.RestrictedComponentsAuthorizable;
 import org.apache.nifi.authorization.user.NiFiUser;
+import org.apache.nifi.bundle.BundleCoordinate;
+import org.apache.nifi.components.ConfigurableComponent;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.logging.ComponentLog;
 
+import java.net.URL;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface ConfiguredComponent extends ComponentAuthorizable {
 
@@ -50,6 +56,24 @@ public interface ConfiguredComponent extends ComponentAuthorizable {
 
     boolean isValid();
 
+    void reload(Set<URL> additionalUrls) throws Exception;
+
+    void refreshProperties();
+
+    Set<URL> getAdditionalClasspathResources(List<PropertyDescriptor> propertyDescriptors);
+
+    BundleCoordinate getBundleCoordinate();
+
+    ConfigurableComponent getComponent();
+
+    ComponentLog getLogger();
+
+    boolean isExtensionMissing();
+
+    void setExtensionMissing(boolean extensionMissing);
+
+    void verifyCanUpdateBundle(BundleCoordinate bundleCoordinate) throws IllegalStateException;
+
     /**
      * @return the any validation errors for this connectable
      */
@@ -69,6 +93,11 @@ public interface ConfiguredComponent extends ComponentAuthorizable {
      * @return whether or not the underlying implementation is restricted
      */
     boolean isRestricted();
+
+    /**
+     * @return whether or not the underlying implementation is deprecated
+     */
+    boolean isDeprecated();
 
     @Override
     default AuthorizationResult checkAuthorization(Authorizer authorizer, RequestAction action, NiFiUser user, Map<String, String> resourceContext) {

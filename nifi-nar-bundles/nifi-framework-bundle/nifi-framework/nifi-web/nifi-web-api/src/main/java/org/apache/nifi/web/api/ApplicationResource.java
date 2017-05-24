@@ -345,10 +345,18 @@ public abstract class ApplicationResource {
             }
         }
 
-        // set the proxy scheme to request scheme if not already set client
+        // set the proxy details to request details if not already set client
         final String proxyScheme = httpServletRequest.getHeader(PROXY_SCHEME_HTTP_HEADER);
         if (proxyScheme == null) {
             result.put(PROXY_SCHEME_HTTP_HEADER, httpServletRequest.getScheme());
+        }
+        final String proxyHost = httpServletRequest.getHeader(PROXY_HOST_HTTP_HEADER);
+        if (proxyHost == null) {
+            result.put(PROXY_HOST_HTTP_HEADER, httpServletRequest.getServerName());
+        }
+        final String proxyPort = httpServletRequest.getHeader(PROXY_PORT_HTTP_HEADER);
+        if (proxyPort == null) {
+            result.put(PROXY_PORT_HTTP_HEADER, String.valueOf(httpServletRequest.getServerPort()));
         }
 
         return result;
@@ -662,6 +670,11 @@ public abstract class ApplicationResource {
             // authorize access
             serviceFacade.authorizeAccess(authorizer);
 
+            // verify if necessary
+            if (verifier != null) {
+                verifier.run();
+            }
+
             // run the action
             return action.apply(entity);
         }
@@ -973,10 +986,21 @@ public abstract class ApplicationResource {
 
         // Determine whether we should replicate only to the cluster coordinator, or if we should replicate directly
         // to the cluster nodes themselves.
-        if (getReplicationTarget() == ReplicationTarget.CLUSTER_NODES) {
-            return requestReplicator.replicate(method, path, entity, headers).awaitMergedResponse();
-        } else {
-            return requestReplicator.forwardToCoordinator(getClusterCoordinatorNode(), method, path, entity, headers).awaitMergedResponse();
+        final long replicateStart = System.nanoTime();
+        String action = null;
+        try {
+            if (getReplicationTarget() == ReplicationTarget.CLUSTER_NODES) {
+                action = "Replicate Request " + method + " " + path;
+                return requestReplicator.replicate(method, path, entity, headers).awaitMergedResponse();
+            } else {
+                action = "Forward Request " + method + " " + path + " to Coordinator";
+                return requestReplicator.forwardToCoordinator(getClusterCoordinatorNode(), method, path, entity, headers).awaitMergedResponse();
+            }
+        } finally {
+            final long replicateNanos = System.nanoTime() - replicateStart;
+            final String transactionId = headers.get(RequestReplicator.REQUEST_TRANSACTION_ID_HEADER);
+            final String requestId = transactionId == null ? "Request with no ID" : transactionId;
+            logger.debug("Took a total of {} millis to {} for {}", TimeUnit.NANOSECONDS.toMillis(replicateNanos), action, requestId);
         }
     }
 

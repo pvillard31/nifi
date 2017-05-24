@@ -18,13 +18,13 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-framework</artifactId>
-        <version>1.2.0-SNAPSHOT</version>
+        <version>1.3.0-SNAPSHOT</version>
     </parent>
     <artifactId>nifi-framework-core-api</artifactId>
     <dependencies>
         <dependency>
             <groupId>org.apache.nifi</groupId>
-            <artifactId>nifi-nar-utils</artifactId>
+            <artifactId>nifi-framework-nar-utils</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>

@@ -16,33 +16,8 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import java.text.Collator;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
-
-import javax.ws.rs.WebApplicationException;
-
+import org.apache.commons.lang3.ClassUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
 import org.apache.nifi.action.component.details.ComponentDetails;
 import org.apache.nifi.action.component.details.ExtensionDetails;
@@ -61,6 +36,7 @@ import org.apache.nifi.action.details.PurgeDetails;
 import org.apache.nifi.annotation.behavior.Restricted;
 import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.DeprecationNotice;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.authorization.AbstractPolicyBasedAuthorizer;
 import org.apache.nifi.authorization.AccessPolicy;
@@ -72,6 +48,9 @@ import org.apache.nifi.authorization.User;
 import org.apache.nifi.authorization.resource.Authorizable;
 import org.apache.nifi.authorization.resource.ComponentAuthorizable;
 import org.apache.nifi.authorization.user.NiFiUserUtils;
+import org.apache.nifi.bundle.Bundle;
+import org.apache.nifi.bundle.BundleCoordinate;
+import org.apache.nifi.bundle.BundleDetails;
 import org.apache.nifi.cluster.coordination.heartbeat.NodeHeartbeat;
 import org.apache.nifi.cluster.coordination.node.NodeConnectionStatus;
 import org.apache.nifi.cluster.event.NodeEvent;
@@ -122,6 +101,8 @@ import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.ProcessGroupCounts;
 import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.history.History;
+import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.nar.NarClassLoaders;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.provenance.lineage.ComputeLineageResult;
@@ -137,7 +118,6 @@ import org.apache.nifi.reporting.ReportingTask;
 import org.apache.nifi.scheduling.SchedulingStrategy;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
-import org.apache.nifi.util.StringUtils;
 import org.apache.nifi.web.FlowModification;
 import org.apache.nifi.web.Revision;
 import org.apache.nifi.web.api.dto.action.ActionDTO;
@@ -183,6 +163,32 @@ import org.apache.nifi.web.api.entity.RemoteProcessGroupStatusSnapshotEntity;
 import org.apache.nifi.web.api.entity.TenantEntity;
 import org.apache.nifi.web.controller.ControllerFacade;
 import org.apache.nifi.web.revision.RevisionManager;
+
+import javax.ws.rs.WebApplicationException;
+import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public final class DtoFactory {
 
@@ -1230,10 +1236,17 @@ public final class DtoFactory {
     }
 
     public ReportingTaskDTO createReportingTaskDto(final ReportingTaskNode reportingTaskNode) {
+        final BundleCoordinate bundleCoordinate = reportingTaskNode.getBundleCoordinate();
+        final List<Bundle> compatibleBundles = ExtensionManager.getBundles(reportingTaskNode.getCanonicalClassName()).stream().filter(bundle -> {
+            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
+            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
+        }).collect(Collectors.toList());
+
         final ReportingTaskDTO dto = new ReportingTaskDTO();
         dto.setId(reportingTaskNode.getIdentifier());
         dto.setName(reportingTaskNode.getName());
         dto.setType(reportingTaskNode.getCanonicalClassName());
+        dto.setBundle(createBundleDto(bundleCoordinate));
         dto.setSchedulingStrategy(reportingTaskNode.getSchedulingStrategy().name());
         dto.setSchedulingPeriod(reportingTaskNode.getSchedulingPeriod());
         dto.setState(reportingTaskNode.getScheduledState().name());
@@ -1242,6 +1255,9 @@ public final class DtoFactory {
         dto.setComments(reportingTaskNode.getComments());
         dto.setPersistsState(reportingTaskNode.getReportingTask().getClass().isAnnotationPresent(Stateful.class));
         dto.setRestricted(reportingTaskNode.isRestricted());
+        dto.setDeprecated(reportingTaskNode.isDeprecated());
+        dto.setExtensionMissing(reportingTaskNode.isExtensionMissing());
+        dto.setMultipleVersionsAvailable(compatibleBundles.size() > 1);
 
         final Map<String, String> defaultSchedulingPeriod = new HashMap<>();
         defaultSchedulingPeriod.put(SchedulingStrategy.TIMER_DRIVEN.name(), SchedulingStrategy.TIMER_DRIVEN.getDefaultSchedulingPeriod());
@@ -1302,16 +1318,27 @@ public final class DtoFactory {
     }
 
     public ControllerServiceDTO createControllerServiceDto(final ControllerServiceNode controllerServiceNode) {
+        final BundleCoordinate bundleCoordinate = controllerServiceNode.getBundleCoordinate();
+        final List<Bundle> compatibleBundles = ExtensionManager.getBundles(controllerServiceNode.getCanonicalClassName()).stream().filter(bundle -> {
+            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
+            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
+        }).collect(Collectors.toList());
+
         final ControllerServiceDTO dto = new ControllerServiceDTO();
         dto.setId(controllerServiceNode.getIdentifier());
         dto.setParentGroupId(controllerServiceNode.getProcessGroup() == null ? null : controllerServiceNode.getProcessGroup().getIdentifier());
         dto.setName(controllerServiceNode.getName());
         dto.setType(controllerServiceNode.getCanonicalClassName());
+        dto.setBundle(createBundleDto(bundleCoordinate));
+        dto.setControllerServiceApis(createControllerServiceApiDto(controllerServiceNode.getControllerServiceImplementation().getClass()));
         dto.setState(controllerServiceNode.getState().name());
         dto.setAnnotationData(controllerServiceNode.getAnnotationData());
         dto.setComments(controllerServiceNode.getComments());
         dto.setPersistsState(controllerServiceNode.getControllerServiceImplementation().getClass().isAnnotationPresent(Stateful.class));
         dto.setRestricted(controllerServiceNode.isRestricted());
+        dto.setDeprecated(controllerServiceNode.isDeprecated());
+        dto.setExtensionMissing(controllerServiceNode.isExtensionMissing());
+        dto.setMultipleVersionsAvailable(compatibleBundles.size() > 1);
 
         // sort a copy of the properties
         final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>(new Comparator<PropertyDescriptor>() {
@@ -1468,6 +1495,12 @@ public final class DtoFactory {
         dto.setConcurrentlySchedulableTaskCount(port.getMaxConcurrentTasks());
         dto.setUseCompression(port.isUseCompression());
         dto.setExists(port.getTargetExists());
+
+        final BatchSettingsDTO batchDTO = new BatchSettingsDTO();
+        batchDTO.setCount(port.getBatchCount());
+        batchDTO.setSize(port.getBatchSize());
+        batchDTO.setDuration(port.getBatchDuration());
+        dto.setBatchSettings(batchDTO);
 
         // determine if this port is currently connected to another component locally
         if (ConnectableType.REMOTE_OUTPUT_PORT.equals(port.getConnectableType())) {
@@ -2032,6 +2065,11 @@ public final class DtoFactory {
         return restriction == null ? null : restriction.value();
     }
 
+    private String getDeprecationReason(final Class<?> cls) {
+        final DeprecationNotice deprecationNotice = cls.getAnnotation(DeprecationNotice.class);
+        return deprecationNotice == null ? null : deprecationNotice.reason();
+    }
+
     /**
      * Gets the capability description from the specified class.
      */
@@ -2056,27 +2094,107 @@ public final class DtoFactory {
     }
 
     /**
+     * Creates a bundle DTO from the specified class.
+     *
+     * @param coordinate bundle coordinates
+     * @return dto
+     */
+    public BundleDTO createBundleDto(final BundleCoordinate coordinate) {
+        final BundleDTO dto = new BundleDTO();
+        dto.setGroup(coordinate.getGroup());
+        dto.setArtifact(coordinate.getId());
+        dto.setVersion(coordinate.getVersion());
+        return dto;
+    }
+
+    private List<ControllerServiceApiDTO> createControllerServiceApiDto(final Class cls) {
+        final Set<Class> serviceApis = new HashSet<>();
+
+        // if this is a controller service
+        if (ControllerService.class.isAssignableFrom(cls)) {
+            // get all of it's interfaces to determine the controller service api's it implements
+            final List<Class<?>> interfaces = ClassUtils.getAllInterfaces(cls);
+            for (final Class i : interfaces) {
+                // add all controller services that's not ControllerService itself
+                if (ControllerService.class.isAssignableFrom(i) && !ControllerService.class.equals(i)) {
+                    serviceApis.add(i);
+                }
+            }
+
+            final List<ControllerServiceApiDTO> dtos = new ArrayList<>();
+            for (final Class serviceApi : serviceApis) {
+                final Bundle bundle = ExtensionManager.getBundle(serviceApi.getClassLoader());
+                final BundleCoordinate bundleCoordinate = bundle.getBundleDetails().getCoordinate();
+
+                final ControllerServiceApiDTO dto = new ControllerServiceApiDTO();
+                dto.setType(serviceApi.getName());
+                dto.setBundle(createBundleDto(bundleCoordinate));
+                dtos.add(dto);
+            }
+            return dtos;
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Gets the DocumentedTypeDTOs from the specified classes.
      *
      * @param classes classes
+     * @param bundleGroupFilter if specified, must be member of bundle group
+     * @param bundleArtifactFilter if specified, must be member of bundle artifact
+     * @param typeFilter if specified, type must match
      * @return dtos
      */
-    @SuppressWarnings("rawtypes")
-    public Set<DocumentedTypeDTO> fromDocumentedTypes(final Set<Class> classes) {
+    public Set<DocumentedTypeDTO> fromDocumentedTypes(final Map<Class, Bundle> classes, final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter) {
         final Set<DocumentedTypeDTO> types = new LinkedHashSet<>();
-        final Set<Class> sortedClasses = new TreeSet<>(CLASS_NAME_COMPARATOR);
-        sortedClasses.addAll(classes);
+        final List<Class> sortedClasses = new ArrayList<>(classes.keySet());
+        Collections.sort(sortedClasses, CLASS_NAME_COMPARATOR);
 
-        for (final Class<?> cls : sortedClasses) {
-            final DocumentedTypeDTO type = new DocumentedTypeDTO();
-            type.setType(cls.getName());
-            type.setDescription(getCapabilityDescription(cls));
-            type.setUsageRestriction(getUsageRestriction(cls));
-            type.setTags(getTags(cls));
-            types.add(type);
+        for (final Class cls : sortedClasses) {
+            final Bundle bundle = classes.get(cls);
+            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
+
+            // only include classes that meet the criteria if specified
+            if (bundleGroupFilter != null && !bundleGroupFilter.equals(coordinate.getGroup())) {
+                continue;
+            }
+            if (bundleArtifactFilter != null && !bundleArtifactFilter.equals(coordinate.getId())) {
+                continue;
+            }
+            if (typeFilter != null && !typeFilter.equals(cls.getName())) {
+                continue;
+            }
+
+            final DocumentedTypeDTO dto = new DocumentedTypeDTO();
+            dto.setType(cls.getName());
+            dto.setBundle(createBundleDto(coordinate));
+            dto.setControllerServiceApis(createControllerServiceApiDto(cls));
+            dto.setDescription(getCapabilityDescription(cls));
+            dto.setUsageRestriction(getUsageRestriction(cls));
+            dto.setDeprecationReason(getDeprecationReason(cls));
+            dto.setTags(getTags(cls));
+            types.add(dto);
         }
 
         return types;
+    }
+
+    /**
+     * Gets the DocumentedTypeDTOs from the specified classes.
+     *
+     * @param classes classes
+     * @param bundleGroupFilter if specified, must be member of bundle group
+     * @param bundleArtifactFilter if specified, must be member of bundle artifact
+     * @param typeFilter if specified, type must match
+     * @return dtos
+     */
+    public Set<DocumentedTypeDTO> fromDocumentedTypes(final Set<Class> classes, final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter) {
+        final Map<Class, Bundle> classBundles = new HashMap<>();
+        for (final Class cls : classes) {
+            classBundles.put(cls, ExtensionManager.getBundle(cls.getClassLoader()));
+        }
+        return fromDocumentedTypes(classBundles, bundleGroupFilter, bundleArtifactFilter, typeFilter);
     }
 
     /**
@@ -2090,6 +2208,12 @@ public final class DtoFactory {
             return null;
         }
 
+        final BundleCoordinate bundleCoordinate = node.getBundleCoordinate();
+        final List<Bundle> compatibleBundles = ExtensionManager.getBundles(node.getCanonicalClassName()).stream().filter(bundle -> {
+            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
+            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
+        }).collect(Collectors.toList());
+
         final ProcessorDTO dto = new ProcessorDTO();
         dto.setId(node.getIdentifier());
         dto.setPosition(createPositionDto(node.getPosition()));
@@ -2098,8 +2222,12 @@ public final class DtoFactory {
         dto.setInputRequirement(node.getInputRequirement().name());
         dto.setPersistsState(node.getProcessor().getClass().isAnnotationPresent(Stateful.class));
         dto.setRestricted(node.isRestricted());
+        dto.setDeprecated(node.isDeprecated());
+        dto.setExtensionMissing(node.isExtensionMissing());
+        dto.setMultipleVersionsAvailable(compatibleBundles.size() > 1);
 
         dto.setType(node.getCanonicalClassName());
+        dto.setBundle(createBundleDto(bundleCoordinate));
         dto.setName(node.getName());
         dto.setState(node.getScheduledState().toString());
 
@@ -2466,16 +2594,25 @@ public final class DtoFactory {
 
     public SystemDiagnosticsSnapshotDTO.VersionInfoDTO createVersionInfoDTO() {
         final SystemDiagnosticsSnapshotDTO.VersionInfoDTO dto = new SystemDiagnosticsSnapshotDTO.VersionInfoDTO();
-        dto.setNiFiVersion(properties.getUiTitle());
         dto.setJavaVendor(System.getProperty("java.vendor"));
         dto.setJavaVersion(System.getProperty("java.version"));
         dto.setOsName(System.getProperty("os.name"));
         dto.setOsVersion(System.getProperty("os.version"));
         dto.setOsArchitecture(System.getProperty("os.arch"));
-        dto.setBuildTag(properties.getProperty(NiFiProperties.BUILD_TAG));
-        dto.setBuildRevision(properties.getProperty(NiFiProperties.BUILD_REVISION));
-        dto.setBuildBranch(properties.getProperty(NiFiProperties.BUILD_BRANCH));
-        dto.setBuildTimestamp(properties.getBuildTimestamp());
+
+        final Bundle frameworkBundle = NarClassLoaders.getInstance().getFrameworkBundle();
+        if (frameworkBundle != null) {
+            final BundleDetails frameworkDetails = frameworkBundle.getBundleDetails();
+
+            dto.setNiFiVersion(frameworkDetails.getCoordinate().getVersion());
+
+            // Get build info
+            dto.setBuildTag(frameworkDetails.getBuildTag());
+            dto.setBuildRevision(frameworkDetails.getBuildRevision());
+            dto.setBuildBranch(frameworkDetails.getBuildBranch());
+            dto.setBuildTimestamp(frameworkDetails.getBuildTimestampDate());
+        }
+
         return dto;
     }
 
@@ -2598,7 +2735,11 @@ public final class DtoFactory {
 
         // set the identifies controller service is applicable
         if (propertyDescriptor.getControllerServiceDefinition() != null) {
-            dto.setIdentifiesControllerService(propertyDescriptor.getControllerServiceDefinition().getName());
+            final Class serviceClass = propertyDescriptor.getControllerServiceDefinition();
+            final Bundle serviceBundle = ExtensionManager.getBundle(serviceClass.getClassLoader());
+
+            dto.setIdentifiesControllerService(serviceClass.getName());
+            dto.setIdentifiesControllerServiceBundle(createBundleDto(serviceBundle.getBundleDetails().getCoordinate()));
         }
 
         final Class<? extends ControllerService> serviceDefinition = propertyDescriptor.getControllerServiceDefinition();
@@ -2654,6 +2795,7 @@ public final class DtoFactory {
     public ControllerServiceDTO copy(final ControllerServiceDTO original) {
         final ControllerServiceDTO copy = new ControllerServiceDTO();
         copy.setAnnotationData(original.getAnnotationData());
+        copy.setControllerServiceApis(original.getControllerServiceApis());
         copy.setComments(original.getComments());
         copy.setCustomUiUrl(original.getCustomUiUrl());
         copy.setDescriptors(copy(original.getDescriptors()));
@@ -2664,6 +2806,10 @@ public final class DtoFactory {
         copy.setReferencingComponents(copy(original.getReferencingComponents()));
         copy.setState(original.getState());
         copy.setType(original.getType());
+        copy.setBundle(copy(original.getBundle()));
+        copy.setExtensionMissing(original.getExtensionMissing());
+        copy.setMultipleVersionsAvailable(original.getMultipleVersionsAvailable());
+        copy.setPersistsState(original.getPersistsState());
         copy.setValidationErrors(copy(original.getValidationErrors()));
         return copy;
     }
@@ -2709,6 +2855,18 @@ public final class DtoFactory {
         }
     }
 
+    public BundleDTO copy(final BundleDTO original) {
+        if (original == null) {
+            return null;
+        }
+
+        final BundleDTO copy = new BundleDTO();
+        copy.setGroup(original.getGroup());
+        copy.setArtifact(original.getArtifact());
+        copy.setVersion(original.getVersion());
+        return copy;
+    }
+
     public ProcessorDTO copy(final ProcessorDTO original) {
         final ProcessorDTO copy = new ProcessorDTO();
         copy.setConfig(copy(original.getConfig()));
@@ -2721,8 +2879,13 @@ public final class DtoFactory {
         copy.setState(original.getState());
         copy.setStyle(copy(original.getStyle()));
         copy.setType(original.getType());
+        copy.setBundle(copy(original.getBundle()));
         copy.setSupportsParallelProcessing(original.getSupportsParallelProcessing());
         copy.setSupportsEventDriven(original.getSupportsEventDriven());
+        copy.setSupportsBatching(original.getSupportsBatching());
+        copy.setPersistsState(original.getPersistsState());
+        copy.setExtensionMissing(original.getExtensionMissing());
+        copy.setMultipleVersionsAvailable(original.getMultipleVersionsAvailable());
         copy.setValidationErrors(copy(original.getValidationErrors()));
 
         return copy;
@@ -2815,6 +2978,13 @@ public final class DtoFactory {
         copy.setConcurrentlySchedulableTaskCount(original.getConcurrentlySchedulableTaskCount());
         copy.setUseCompression(original.getUseCompression());
         copy.setExists(original.getExists());
+        final BatchSettingsDTO batchOrg = original.getBatchSettings();
+        if (batchOrg != null) {
+            final BatchSettingsDTO batchCopy = new BatchSettingsDTO();
+            batchCopy.setCount(batchOrg.getCount());
+            batchCopy.setSize(batchOrg.getSize());
+            batchCopy.setDuration(batchOrg.getDuration());
+        }
         return copy;
     }
 
@@ -2879,6 +3049,7 @@ public final class DtoFactory {
         copy.setProxyPort(original.getProxyPort());
         copy.setProxyUser(original.getProxyUser());
         copy.setProxyPassword(original.getProxyPassword());
+        copy.setLocalNetworkInterface(original.getLocalNetworkInterface());
 
         copy.setContents(copyContents);
 

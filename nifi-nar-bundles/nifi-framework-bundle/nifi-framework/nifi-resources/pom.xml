@@ -18,18 +18,17 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-framework</artifactId>
-        <version>1.2.0-SNAPSHOT</version>
+        <version>1.3.0-SNAPSHOT</version>
     </parent>
     <artifactId>nifi-resources</artifactId>
     <packaging>pom</packaging>
     <description>holds common resources used to build installers</description>
     <properties>
         <!--Wrapper Properties -->
-        <nifi.jvm.heap.mb>512</nifi.jvm.heap.mb>
-        <nifi.jvm.permgen.mb>128</nifi.jvm.permgen.mb>
+        <nifi.jvm.heap.init>512m</nifi.jvm.heap.init>
+        <nifi.jvm.heap.max>512m</nifi.jvm.heap.max>
         <nifi.run.as />
         <!-- nifi.properties: core properties -->
-        <nifi.version>${project.version}</nifi.version>
         <nifi.flowcontroller.autoResumeState>true</nifi.flowcontroller.autoResumeState>
         <nifi.flowcontroller.graceful.shutdown.period>10 sec</nifi.flowcontroller.graceful.shutdown.period>
         <nifi.flowservice.writedelay.interval>500 ms</nifi.flowservice.writedelay.interval>
@@ -92,6 +91,11 @@
 
         <!-- persistent provenance repository properties -->
         <nifi.provenance.repository.implementation>org.apache.nifi.provenance.PersistentProvenanceRepository</nifi.provenance.repository.implementation>
+        <nifi.provenance.repository.debug.frequency>1_000_000</nifi.provenance.repository.debug.frequency>
+        <nifi.provenance.repository.encryption.key.provider.implementation />
+        <nifi.provenance.repository.encryption.key.provider.location />
+        <nifi.provenance.repository.encryption.key.id />
+        <nifi.provenance.repository.encryption.key />
         <nifi.provenance.repository.directory.default>./provenance_repository</nifi.provenance.repository.directory.default>
         <nifi.provenance.repository.max.storage.time>24 hours</nifi.provenance.repository.max.storage.time>
         <nifi.provenance.repository.max.storage.size>1 GB</nifi.provenance.repository.max.storage.size>
@@ -174,13 +178,6 @@
         <nifi.kerberos.spnego.principal />
         <nifi.kerberos.spnego.keytab.location />
         <nifi.kerberos.spnego.authentication.expiration>12 hours</nifi.kerberos.spnego.authentication.expiration>
-
-        <!-- nifi.properties: build info -->
-        <nifi.build.tag>${project.scm.tag}</nifi.build.tag>
-        <nifi.build.timestamp>${maven.build.timestamp}</nifi.build.timestamp>
-        <!-- buildRevision and buildBranch provided by buildnumber-maven-plugin or build-info-read-properties profile -->
-        <nifi.build.branch>${buildBranch}</nifi.build.branch>
-        <nifi.build.revision>${buildRevision}</nifi.build.revision>
     </properties>
     <build>
         <plugins>

@@ -16,6 +16,16 @@
  */
 package org.apache.nifi.processors.aws;
 
+import com.amazonaws.AmazonWebServiceClient;
+import com.amazonaws.ClientConfiguration;
+import com.amazonaws.Protocol;
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.AnonymousAWSCredentials;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.PropertiesCredentials;
+import com.amazonaws.http.conn.ssl.SdkTLSSocketFactory;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -26,10 +36,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-
 import javax.net.ssl.SSLContext;
-
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.conn.ssl.DefaultHostnameVerifier;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnShutdown;
 import org.apache.nifi.components.AllowableValue;
@@ -43,17 +52,6 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors;
 import org.apache.nifi.ssl.SSLContextService;
-
-import com.amazonaws.AmazonWebServiceClient;
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.Protocol;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AnonymousAWSCredentials;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.PropertiesCredentials;
-import com.amazonaws.http.conn.ssl.SdkTLSSocketFactory;
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
 
 /**
  * Abstract base class for aws processors.  This class uses aws credentials for creating aws clients
@@ -119,6 +117,7 @@ public abstract class AbstractAWSProcessor<ClientType extends AmazonWebServiceCl
             .description("Endpoint URL to use instead of the AWS default including scheme, host, port, and path. " +
                     "The AWS libraries select an endpoint URL based on the AWS region, but this property overrides " +
                     "the selected endpoint URL, allowing use with other S3-compatible endpoints.")
+            .expressionLanguageSupported(true)
             .required(false)
             .addValidator(StandardValidators.URL_VALIDATOR)
             .build();
@@ -140,7 +139,7 @@ public abstract class AbstractAWSProcessor<ClientType extends AmazonWebServiceCl
             values.add(createAllowableValue(regions));
         }
 
-        return (AllowableValue[]) values.toArray(new AllowableValue[values.size()]);
+        return values.toArray(new AllowableValue[values.size()]);
     }
 
     @Override
@@ -186,7 +185,8 @@ public abstract class AbstractAWSProcessor<ClientType extends AmazonWebServiceCl
         final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
         if (sslContextService != null) {
             final SSLContext sslContext = sslContextService.createSSLContext(SSLContextService.ClientAuth.NONE);
-            SdkTLSSocketFactory sdkTLSSocketFactory = new SdkTLSSocketFactory(sslContext, null);
+            // NIFI-3788: Changed hostnameVerifier from null to DHV (BrowserCompatibleHostnameVerifier is deprecated)
+            SdkTLSSocketFactory sdkTLSSocketFactory = new SdkTLSSocketFactory(sslContext, new DefaultHostnameVerifier());
             config.getApacheHttpClientConfig().setSslSocketFactory(sdkTLSSocketFactory);
         }
 
@@ -221,11 +221,12 @@ public abstract class AbstractAWSProcessor<ClientType extends AmazonWebServiceCl
 
         // if the endpoint override has been configured, set the endpoint.
         // (per Amazon docs this should only be configured at client creation)
-        final String urlstr = StringUtils.trimToEmpty(context.getProperty(ENDPOINT_OVERRIDE).getValue());
-        if (!urlstr.isEmpty()) {
-            this.client.setEndpoint(urlstr);
+        if (getSupportedPropertyDescriptors().contains(ENDPOINT_OVERRIDE)) {
+            final String urlstr = StringUtils.trimToEmpty(context.getProperty(ENDPOINT_OVERRIDE).evaluateAttributeExpressions().getValue());
+            if (!urlstr.isEmpty()) {
+                this.client.setEndpoint(urlstr);
+            }
         }
-
     }
 
     /**

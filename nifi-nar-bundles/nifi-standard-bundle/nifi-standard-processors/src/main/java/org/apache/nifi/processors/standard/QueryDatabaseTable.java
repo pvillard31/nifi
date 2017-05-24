@@ -35,6 +35,7 @@ import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.dbcp.DBCPService;
 import org.apache.nifi.expression.AttributeExpression;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
@@ -67,6 +68,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
+import static org.apache.nifi.processors.standard.util.JdbcCommon.NORMALIZE_NAMES_FOR_AVRO;
+import static org.apache.nifi.processors.standard.util.JdbcCommon.USE_AVRO_LOGICAL_TYPES;
+
 
 @EventDriven
 @InputRequirement(Requirement.INPUT_FORBIDDEN)
@@ -85,6 +89,7 @@ import java.util.stream.IntStream;
         + "incremental fetching, fetching of newly added rows, etc. To clear the maximum values, clear the state of the processor "
         + "per the State Management documentation")
 @WritesAttributes({
+        @WritesAttribute(attribute = "tablename", description="Name of the table being queried"),
         @WritesAttribute(attribute = "querydbtable.row.count", description="The number of rows selected by the query"),
         @WritesAttribute(attribute="fragment.identifier", description="If 'Max Rows Per Flow File' is set then all FlowFiles from the same query result set "
                 + "will have the same value for the fragment.identifier attribute. This can then be used to correlate the results."),
@@ -101,6 +106,7 @@ import java.util.stream.IntStream;
         + "max value for max value columns. Properties should be added in the format `initial.maxvalue.{max_value_column}`.")
 public class QueryDatabaseTable extends AbstractDatabaseFetchProcessor {
 
+    public static final String RESULT_TABLENAME = "tablename";
     public static final String RESULT_ROW_COUNT = "querydbtable.row.count";
     public static final String INTIIAL_MAX_VALUE_PROP_START = "initial.maxvalue.";
 
@@ -153,6 +159,7 @@ public class QueryDatabaseTable extends AbstractDatabaseFetchProcessor {
         pds.add(MAX_ROWS_PER_FLOW_FILE);
         pds.add(MAX_FRAGMENTS);
         pds.add(NORMALIZE_NAMES_FOR_AVRO);
+        pds.add(USE_AVRO_LOGICAL_TYPES);
         propDescriptors = Collections.unmodifiableList(pds);
     }
 
@@ -200,7 +207,12 @@ public class QueryDatabaseTable extends AbstractDatabaseFetchProcessor {
         final Integer maxFragments = context.getProperty(MAX_FRAGMENTS).isSet()
                 ? context.getProperty(MAX_FRAGMENTS).evaluateAttributeExpressions().asInteger()
                 : 0;
-        final boolean convertNamesForAvro = context.getProperty(NORMALIZE_NAMES_FOR_AVRO).asBoolean();
+        final JdbcCommon.AvroConversionOptions options = JdbcCommon.AvroConversionOptions.builder()
+                .recordName(tableName)
+                .maxRows(maxRowsPerFlowFile)
+                .convertNames(context.getProperty(NORMALIZE_NAMES_FOR_AVRO).asBoolean())
+                .useLogicalTypes(context.getProperty(USE_AVRO_LOGICAL_TYPES).asBoolean())
+                .build();
 
         final Map<String,String> maxValueProperties = getDefaultMaxValueProperties(context.getProperties());
 
@@ -277,13 +289,12 @@ public class QueryDatabaseTable extends AbstractDatabaseFetchProcessor {
                     final AtomicLong nrOfRows = new AtomicLong(0L);
 
                     FlowFile fileToProcess = session.create();
-
                     try {
                         fileToProcess = session.write(fileToProcess, out -> {
                             // Max values will be updated in the state property map by the callback
                             final MaxValueResultSetRowCollector maxValCollector = new MaxValueResultSetRowCollector(tableName, statePropertyMap, dbAdapter);
                             try {
-                                nrOfRows.set(JdbcCommon.convertToAvroStream(resultSet, out, tableName, maxValCollector, maxRowsPerFlowFile, convertNamesForAvro));
+                                nrOfRows.set(JdbcCommon.convertToAvroStream(resultSet, out, options, maxValCollector));
                             } catch (SQLException | RuntimeException e) {
                                 throw new ProcessException("Error during database query or conversion of records to Avro.", e);
                             }
@@ -297,7 +308,8 @@ public class QueryDatabaseTable extends AbstractDatabaseFetchProcessor {
                     if (nrOfRows.get() > 0) {
                         // set attribute how many rows were selected
                         fileToProcess = session.putAttribute(fileToProcess, RESULT_ROW_COUNT, String.valueOf(nrOfRows.get()));
-
+                        fileToProcess = session.putAttribute(fileToProcess, RESULT_TABLENAME, tableName);
+                        fileToProcess = session.putAttribute(fileToProcess, CoreAttributes.MIME_TYPE.key(), JdbcCommon.MIME_TYPE_AVRO_BINARY);
                         if(maxRowsPerFlowFile > 0) {
                             fileToProcess = session.putAttribute(fileToProcess, "fragment.identifier", fragmentIdentifier);
                             fileToProcess = session.putAttribute(fileToProcess, "fragment.index", String.valueOf(fragmentIndex));

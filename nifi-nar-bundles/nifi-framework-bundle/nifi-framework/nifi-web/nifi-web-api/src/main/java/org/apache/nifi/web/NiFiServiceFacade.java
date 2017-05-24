@@ -25,6 +25,7 @@ import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.web.api.dto.AccessPolicyDTO;
 import org.apache.nifi.web.api.dto.BulletinBoardDTO;
+import org.apache.nifi.web.api.dto.BulletinDTO;
 import org.apache.nifi.web.api.dto.BulletinQueryDTO;
 import org.apache.nifi.web.api.dto.ClusterDTO;
 import org.apache.nifi.web.api.dto.ComponentHistoryDTO;
@@ -66,6 +67,7 @@ import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
 import org.apache.nifi.web.api.dto.status.ControllerStatusDTO;
 import org.apache.nifi.web.api.entity.AccessPolicyEntity;
 import org.apache.nifi.web.api.entity.ActionEntity;
+import org.apache.nifi.web.api.entity.BulletinEntity;
 import org.apache.nifi.web.api.entity.ConnectionEntity;
 import org.apache.nifi.web.api.entity.ConnectionStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerBulletinsEntity;
@@ -152,6 +154,8 @@ public interface NiFiServiceFacade {
      * @return component revisions from the snippet
      */
     Set<Revision> getRevisionsFromSnippet(String snippetId);
+
+
 
     // ----------------------------------------
     // Controller methods
@@ -328,24 +332,37 @@ public interface NiFiServiceFacade {
     /**
      * Returns the list of processor types.
      *
-     * @return The list of available processor types
+     * @param bundleGroupFilter if specified, must be member of bundle group
+     * @param bundleArtifactFilter if specified, must be member of bundle artifact
+     * @param typeFilter if specified, type must match
+     * @return The list of available processor types matching specified criteria
      */
-    Set<DocumentedTypeDTO> getProcessorTypes();
+    Set<DocumentedTypeDTO> getProcessorTypes(final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter);
 
     /**
      * Returns the list of controller service types.
      *
      * @param serviceType Filters only service types that implement this type
-     * @return The list of available controller types
+     * @param serviceBundleGroup if serviceType specified, the bundle group of the serviceType
+     * @param serviceBundleArtifact if serviceType specified, the bundle artifact of the serviceType
+     * @param serviceBundleVersion if serviceType specified, the bundle version of the serviceType
+     * @param bundleGroupFilter if specified, must be member of bundle group
+     * @param bundleArtifactFilter if specified, must be member of bundle artifact
+     * @param typeFilter if specified, type must match
+     * @return The list of available controller types matching specified criteria
      */
-    Set<DocumentedTypeDTO> getControllerServiceTypes(String serviceType);
+    Set<DocumentedTypeDTO> getControllerServiceTypes(final String serviceType, final String serviceBundleGroup, final String serviceBundleArtifact, final String serviceBundleVersion,
+                                                     final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter);
 
     /**
      * Returns the list of reporting task types.
      *
-     * @return The list of available reporting task types
+     * @param bundleGroupFilter if specified, must be member of bundle group
+     * @param bundleArtifactFilter if specified, must be member of bundle artifact
+     * @param typeFilter if specified, type must match
+     * @return The list of available reporting task types matching specified criteria
      */
-    Set<DocumentedTypeDTO> getReportingTaskTypes();
+    Set<DocumentedTypeDTO> getReportingTaskTypes(final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter);
 
     /**
      * Returns the list of prioritizer types.
@@ -400,13 +417,14 @@ public interface NiFiServiceFacade {
      * Instantiate the corresponding template.
      *
      * @param groupId group id
-     * @param templateId template id
      * @param originX x
      * @param originY y
+     * @param templateEncodingVersion template encoding version
+     * @param snippet template snippet
      * @param idGenerationSeed the ID to use for generating UUID's. May be null.
      * @return snapshot
      */
-    FlowEntity createTemplateInstance(String groupId, Double originX, Double originY, String templateId, String idGenerationSeed);
+    FlowEntity createTemplateInstance(String groupId, Double originX, Double originY, String templateEncodingVersion, FlowSnippetDTO snippet, String idGenerationSeed);
 
     /**
      * Gets the template with the specified id.
@@ -441,6 +459,14 @@ public interface NiFiServiceFacade {
     // ----------------------------------------
     // Processor methods
     // ----------------------------------------
+
+    /**
+     * Verifies the specified processor can be created.
+     *
+     * @param processorDTO processor
+     */
+    void verifyCreateProcessor(ProcessorDTO processorDTO);
+
     /**
      * Creates a new Processor.
      *
@@ -1025,6 +1051,15 @@ public interface NiFiServiceFacade {
      */
     RemoteProcessGroupEntity deleteRemoteProcessGroup(Revision revision, String remoteProcessGroupId);
 
+
+    /**
+     * Create a system bulletin
+     *
+     * @param bulletinDTO bulletin to send to users
+     * @param canRead allow users to read bulletin
+     */
+    BulletinEntity createBulletin(final BulletinDTO bulletinDTO, final Boolean canRead);
+
     // ----------------------------------------
     // Funnel methods
     // ----------------------------------------
@@ -1321,6 +1356,14 @@ public interface NiFiServiceFacade {
     // ----------------------------------------
     // Controller Services methods
     // ----------------------------------------
+
+    /**
+     * Verifies the specified controller service can be created.
+     *
+     * @param controllerServiceDTO service
+     */
+    void verifyCreateControllerService(ControllerServiceDTO controllerServiceDTO);
+
     /**
      * Creates a controller service.
      *
@@ -1420,6 +1463,14 @@ public interface NiFiServiceFacade {
     // ----------------------------------------
     // Reporting Task methods
     // ----------------------------------------
+
+    /**
+     * Verifies the specified reporting task can be created.
+     *
+     * @param reportingTaskDTO task
+     */
+    void verifyCreateReportingTask(ReportingTaskDTO reportingTaskDTO);
+
     /**
      * Creates a reporting task.
      *

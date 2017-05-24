@@ -24,17 +24,15 @@ import java.net.InetSocketAddress;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The NiFiProperties class holds all properties which are needed for various
@@ -58,7 +56,6 @@ public abstract class NiFiProperties {
     public static final String LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE = "nifi.login.identity.provider.configuration.file";
     public static final String REPOSITORY_DATABASE_DIRECTORY = "nifi.database.directory";
     public static final String RESTORE_DIRECTORY = "nifi.restore.directory";
-    public static final String VERSION = "nifi.version";
     public static final String WRITE_DELAY_INTERVAL = "nifi.flowservice.writedelay.interval";
     public static final String AUTO_RESUME_STATE = "nifi.flowcontroller.autoResumeState";
     public static final String FLOW_CONTROLLER_GRACEFUL_SHUTDOWN_PERIOD = "nifi.flowcontroller.graceful.shutdown.period";
@@ -120,6 +117,11 @@ public abstract class NiFiProperties {
     public static final String PROVENANCE_INDEXED_ATTRIBUTES = "nifi.provenance.repository.indexed.attributes";
     public static final String PROVENANCE_INDEX_SHARD_SIZE = "nifi.provenance.repository.index.shard.size";
     public static final String PROVENANCE_JOURNAL_COUNT = "nifi.provenance.repository.journal.count";
+    public static final String PROVENANCE_REPO_ENCRYPTION_KEY = "nifi.provenance.repository.encryption.key";
+    public static final String PROVENANCE_REPO_ENCRYPTION_KEY_ID = "nifi.provenance.repository.encryption.key.id";
+    public static final String PROVENANCE_REPO_ENCRYPTION_KEY_PROVIDER_IMPLEMENTATION_CLASS = "nifi.provenance.repository.encryption.key.provider.implementation";
+    public static final String PROVENANCE_REPO_ENCRYPTION_KEY_PROVIDER_LOCATION = "nifi.provenance.repository.encryption.key.provider.location";
+    public static final String PROVENANCE_REPO_DEBUG_FREQUENCY = "nifi.provenance.repository.debug.frequency";
 
     // component status repository properties
     public static final String COMPONENT_STATUS_REPOSITORY_IMPLEMENTATION = "nifi.components.status.repository.implementation";
@@ -205,18 +207,10 @@ public abstract class NiFiProperties {
     // expression language properties
     public static final String VARIABLE_REGISTRY_PROPERTIES = "nifi.variable.registry.properties";
 
-    // build info
-    public static final String BUILD_TAG = "nifi.build.tag";
-    public static final String BUILD_BRANCH = "nifi.build.branch";
-    public static final String BUILD_REVISION = "nifi.build.revision";
-    public static final String BUILD_TIMESTAMP = "nifi.build.timestamp";
-
     // defaults
-    public static final String DEFAULT_TITLE = "NiFi";
     public static final Boolean DEFAULT_AUTO_RESUME_STATE = true;
     public static final String DEFAULT_AUTHORIZER_CONFIGURATION_FILE = "conf/authorizers.xml";
     public static final String DEFAULT_LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE = "conf/login-identity-providers.xml";
-    public static final String DEFAULT_USER_CREDENTIAL_CACHE_DURATION = "24 hours";
     public static final Integer DEFAULT_REMOTE_INPUT_PORT = null;
     public static final Path DEFAULT_TEMPLATE_DIRECTORY = Paths.get("conf", "templates");
     public static final int DEFAULT_WEB_THREADS = 200;
@@ -613,14 +607,6 @@ public abstract class NiFiProperties {
     }
 
     // getters for ui properties //
-    /**
-     * Get the title for the UI.
-     *
-     * @return The UI title
-     */
-    public String getUiTitle() {
-        return this.getProperty(VERSION, DEFAULT_TITLE);
-    }
 
     /**
      * Get the banner text.
@@ -792,7 +778,7 @@ public abstract class NiFiProperties {
     /**
      * Returns true if client certificates are required for REST API. Determined
      * if the following conditions are all true:
-     *
+     * <p>
      * - login identity provider is not populated
      * - Kerberos service support is not enabled
      *
@@ -1009,21 +995,6 @@ public abstract class NiFiProperties {
         }
     }
 
-    public Date getBuildTimestamp() {
-        String buildTimestampString = getProperty(NiFiProperties.BUILD_TIMESTAMP);
-        if (!StringUtils.isEmpty(buildTimestampString)) {
-            try {
-                SimpleDateFormat buildTimestampFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-                Date buildTimestampDate = buildTimestampFormat.parse(buildTimestampString);
-                return buildTimestampDate;
-            } catch (ParseException parseEx) {
-                return null;
-            }
-        } else {
-            return null;
-        }
-    }
-
     /**
      * Returns the network interface list to use for HTTP. This method returns a mapping of
      * network interface property names to network interface names.
@@ -1072,6 +1043,61 @@ public abstract class NiFiProperties {
         return getPropertyKeys().size();
     }
 
+    public String getProvenanceRepoEncryptionKeyId() {
+        return getProperty(PROVENANCE_REPO_ENCRYPTION_KEY_ID);
+    }
+
+    /**
+     * Returns the active provenance repository encryption key if a {@code StaticKeyProvider} is in use.
+     * If no key ID is specified in the properties file, the default
+     * {@code nifi.provenance.repository.encryption.key} value is returned. If a key ID is specified in
+     * {@code nifi.provenance.repository.encryption.key.id}, it will attempt to read from
+     * {@code nifi.provenance.repository.encryption.key.id.XYZ} where {@code XYZ} is the provided key
+     * ID. If that value is empty, it will use the default property
+     * {@code nifi.provenance.repository.encryption.key}.
+     *
+     * @return the provenance repository encryption key in hex form
+     */
+    public String getProvenanceRepoEncryptionKey() {
+        String keyId = getProvenanceRepoEncryptionKeyId();
+        String keyKey = StringUtils.isBlank(keyId) ? PROVENANCE_REPO_ENCRYPTION_KEY : PROVENANCE_REPO_ENCRYPTION_KEY + ".id." + keyId;
+        return getProperty(keyKey, getProperty(PROVENANCE_REPO_ENCRYPTION_KEY));
+    }
+
+    /**
+     * Returns a map of keyId -> key in hex loaded from the {@code nifi.properties} file if a
+     * {@code StaticKeyProvider} is defined. If {@code FileBasedKeyProvider} is defined, use
+     * {@code CryptoUtils#readKeys()} instead -- this method will return an empty map.
+     *
+     * @return a Map of the keys identified by key ID
+     */
+    public Map<String, String> getProvenanceRepoEncryptionKeys() {
+        Map<String, String> keys = new HashMap<>();
+        List<String> keyProperties = getProvenanceRepositoryEncryptionKeyProperties();
+
+        // Retrieve the actual key values and store non-empty values in the map
+        for (String prop : keyProperties) {
+            final String value = getProperty(prop);
+            if (!StringUtils.isBlank(value)) {
+                if (prop.equalsIgnoreCase(PROVENANCE_REPO_ENCRYPTION_KEY)) {
+                    prop = getProvenanceRepoEncryptionKeyId();
+                } else {
+                    // Extract nifi.provenance.repository.encryption.key.id.key1 -> key1
+                    prop = prop.substring(prop.lastIndexOf(".") + 1);
+                }
+                keys.put(prop, value);
+            }
+        }
+        return keys;
+    }
+
+    private List<String> getProvenanceRepositoryEncryptionKeyProperties() {
+        // Filter all the property keys that define a key
+        return getPropertyKeys().stream().filter(k ->
+                k.startsWith(PROVENANCE_REPO_ENCRYPTION_KEY_ID + ".") || k.equalsIgnoreCase(PROVENANCE_REPO_ENCRYPTION_KEY)
+        ).collect(Collectors.toList());
+    }
+
     /**
      * Creates an instance of NiFiProperties. This should likely not be called
      * by any classes outside of the NiFi framework but can be useful by the
@@ -1080,11 +1106,11 @@ public abstract class NiFiProperties {
      * file specified cannot be found/read a runtime exception will be thrown.
      * If one is not specified no properties will be loaded by default.
      *
-     * @param propertiesFilePath if provided properties will be loaded from
-     * given file; else will be loaded from System property. Can be null.
+     * @param propertiesFilePath   if provided properties will be loaded from
+     *                             given file; else will be loaded from System property. Can be null.
      * @param additionalProperties allows overriding of properties with the
-     * supplied values. these will be applied after loading from any properties
-     * file. Can be null or empty.
+     *                             supplied values. these will be applied after loading from any properties
+     *                             file. Can be null or empty.
      * @return NiFiProperties
      */
     public static NiFiProperties createBasicNiFiProperties(final String propertiesFilePath, final Map<String, String> additionalProperties) {
@@ -1146,10 +1172,9 @@ public abstract class NiFiProperties {
     public void validate() {
         // REMOTE_INPUT_HOST should be a valid hostname
         String remoteInputHost = getProperty(REMOTE_INPUT_HOST);
-        if(!StringUtils.isBlank(remoteInputHost) && remoteInputHost.split(":").length > 1) { // no scheme/port needed here (http://)
+        if (!StringUtils.isBlank(remoteInputHost) && remoteInputHost.split(":").length > 1) { // no scheme/port needed here (http://)
             throw new IllegalArgumentException(remoteInputHost + " is not a correct value for " + REMOTE_INPUT_HOST + ". It should be a valid hostname without protocol or port.");
         }
         // Other properties to validate...
     }
-
 }

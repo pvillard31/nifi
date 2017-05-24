@@ -23,15 +23,19 @@ import static org.junit.Assert.assertTrue;
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -41,6 +45,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Assert;
@@ -52,6 +57,86 @@ import org.slf4j.LoggerFactory;
 public class TestMinimalLockingWriteAheadLog {
     private static final Logger logger = LoggerFactory.getLogger(TestMinimalLockingWriteAheadLog.class);
 
+
+    @Test
+    public void testTruncatedPartitionHeader() throws IOException {
+        final int numPartitions = 4;
+
+        final Path path = Paths.get("target/testTruncatedPartitionHeader");
+        deleteRecursively(path.toFile());
+        assertTrue(path.toFile().mkdirs());
+
+        final AtomicInteger counter = new AtomicInteger(0);
+        final SerDe<Object> serde = new SerDe<Object>() {
+            @Override
+            public void readHeader(DataInputStream in) throws IOException {
+                if (counter.getAndIncrement() == 1) {
+                    throw new EOFException("Intentionally thrown for unit test");
+                }
+            }
+
+            @Override
+            public void serializeEdit(Object previousRecordState, Object newRecordState, DataOutputStream out) throws IOException {
+                out.write(1);
+            }
+
+            @Override
+            public void serializeRecord(Object record, DataOutputStream out) throws IOException {
+                out.write(1);
+            }
+
+            @Override
+            public Object deserializeEdit(DataInputStream in, Map<Object, Object> currentRecordStates, int version) throws IOException {
+                final int val = in.read();
+                return (val == 1) ? new Object() : null;
+            }
+
+            @Override
+            public Object deserializeRecord(DataInputStream in, int version) throws IOException {
+                final int val = in.read();
+                return (val == 1) ? new Object() : null;
+            }
+
+            @Override
+            public Object getRecordIdentifier(Object record) {
+                return 1;
+            }
+
+            @Override
+            public UpdateType getUpdateType(Object record) {
+                return UpdateType.CREATE;
+            }
+
+            @Override
+            public String getLocation(Object record) {
+                return null;
+            }
+
+            @Override
+            public int getVersion() {
+                return 0;
+            }
+        };
+
+        final WriteAheadRepository<Object> repo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, (SyncListener) null);
+        try {
+            final Collection<Object> initialRecs = repo.recoverRecords();
+            assertTrue(initialRecs.isEmpty());
+
+            repo.update(Collections.singletonList(new Object()), false);
+            repo.update(Collections.singletonList(new Object()), false);
+            repo.update(Collections.singletonList(new Object()), false);
+        } finally {
+            repo.shutdown();
+        }
+
+        final WriteAheadRepository<Object> secondRepo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, (SyncListener) null);
+        try {
+            secondRepo.recoverRecords();
+        } finally {
+            secondRepo.shutdown();
+        }
+    }
 
     @Test
     @Ignore("for local testing only")
@@ -372,6 +457,152 @@ public class TestMinimalLockingWriteAheadLog {
 
         assertTrue(record1);
         assertTrue(record2);
+        assertTrue(record3);
+    }
+
+
+    @Test
+    public void testRecoverFileThatHasTrailingNULBytesAndTruncation() throws IOException {
+        final int numPartitions = 5;
+        final Path path = Paths.get("target/testRecoverFileThatHasTrailingNULBytes");
+        deleteRecursively(path.toFile());
+        Files.createDirectories(path);
+
+        final DummyRecordSerde serde = new DummyRecordSerde();
+        final WriteAheadRepository<DummyRecord> repo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, null);
+        final Collection<DummyRecord> initialRecs = repo.recoverRecords();
+        assertTrue(initialRecs.isEmpty());
+
+        final List<DummyRecord> firstTransaction = new ArrayList<>();
+        firstTransaction.add(new DummyRecord("1", UpdateType.CREATE));
+        firstTransaction.add(new DummyRecord("2", UpdateType.CREATE));
+        firstTransaction.add(new DummyRecord("3", UpdateType.CREATE));
+
+        final List<DummyRecord> secondTransaction = new ArrayList<>();
+        secondTransaction.add(new DummyRecord("1", UpdateType.UPDATE).setProperty("abc", "123"));
+        secondTransaction.add(new DummyRecord("2", UpdateType.UPDATE).setProperty("cba", "123"));
+        secondTransaction.add(new DummyRecord("3", UpdateType.UPDATE).setProperty("aaa", "123"));
+
+        final List<DummyRecord> thirdTransaction = new ArrayList<>();
+        thirdTransaction.add(new DummyRecord("1", UpdateType.DELETE));
+        thirdTransaction.add(new DummyRecord("2", UpdateType.DELETE));
+
+        repo.update(firstTransaction, true);
+        repo.update(secondTransaction, true);
+        repo.update(thirdTransaction, true);
+
+        repo.shutdown();
+
+        final File partition3Dir = path.resolve("partition-2").toFile();
+        final File journalFile = partition3Dir.listFiles()[0];
+        final byte[] contents = Files.readAllBytes(journalFile.toPath());
+
+        // Truncate the contents of the journal file by 8 bytes. Then replace with 28 trailing NUL bytes,
+        // as this is what we often see when we have a sudden power loss.
+        final byte[] truncated = Arrays.copyOfRange(contents, 0, contents.length - 8);
+        final byte[] withNuls = new byte[truncated.length + 28];
+        System.arraycopy(truncated, 0, withNuls, 0, truncated.length);
+
+        try (final OutputStream fos = new FileOutputStream(journalFile)) {
+            fos.write(withNuls);
+        }
+
+        final WriteAheadRepository<DummyRecord> recoverRepo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, null);
+        final Collection<DummyRecord> recoveredRecords = recoverRepo.recoverRecords();
+        assertFalse(recoveredRecords.isEmpty());
+        assertEquals(3, recoveredRecords.size());
+
+        boolean record1 = false, record2 = false, record3 = false;
+        for (final DummyRecord record : recoveredRecords) {
+            switch (record.getId()) {
+                case "1":
+                    record1 = true;
+                    assertEquals("123", record.getProperty("abc"));
+                    break;
+                case "2":
+                    record2 = true;
+                    assertEquals("123", record.getProperty("cba"));
+                    break;
+                case "3":
+                    record3 = true;
+                    assertEquals("123", record.getProperty("aaa"));
+                    break;
+            }
+        }
+
+        assertTrue(record1);
+        assertTrue(record2);
+        assertTrue(record3);
+    }
+
+    @Test
+    public void testRecoverFileThatHasTrailingNULBytesNoTruncation() throws IOException {
+        final int numPartitions = 5;
+        final Path path = Paths.get("target/testRecoverFileThatHasTrailingNULBytes");
+        deleteRecursively(path.toFile());
+        Files.createDirectories(path);
+
+        final DummyRecordSerde serde = new DummyRecordSerde();
+        final WriteAheadRepository<DummyRecord> repo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, null);
+        final Collection<DummyRecord> initialRecs = repo.recoverRecords();
+        assertTrue(initialRecs.isEmpty());
+
+        final List<DummyRecord> firstTransaction = new ArrayList<>();
+        firstTransaction.add(new DummyRecord("1", UpdateType.CREATE));
+        firstTransaction.add(new DummyRecord("2", UpdateType.CREATE));
+        firstTransaction.add(new DummyRecord("3", UpdateType.CREATE));
+
+        final List<DummyRecord> secondTransaction = new ArrayList<>();
+        secondTransaction.add(new DummyRecord("1", UpdateType.UPDATE).setProperty("abc", "123"));
+        secondTransaction.add(new DummyRecord("2", UpdateType.UPDATE).setProperty("cba", "123"));
+        secondTransaction.add(new DummyRecord("3", UpdateType.UPDATE).setProperty("aaa", "123"));
+
+        final List<DummyRecord> thirdTransaction = new ArrayList<>();
+        thirdTransaction.add(new DummyRecord("1", UpdateType.DELETE));
+        thirdTransaction.add(new DummyRecord("2", UpdateType.DELETE));
+
+        repo.update(firstTransaction, true);
+        repo.update(secondTransaction, true);
+        repo.update(thirdTransaction, true);
+
+        repo.shutdown();
+
+        final File partition3Dir = path.resolve("partition-2").toFile();
+        final File journalFile = partition3Dir.listFiles()[0];
+
+        // Truncate the contents of the journal file by 8 bytes. Then replace with 28 trailing NUL bytes,
+        // as this is what we often see when we have a sudden power loss.
+        final byte[] withNuls = new byte[28];
+
+        try (final OutputStream fos = new FileOutputStream(journalFile, true)) {
+            fos.write(withNuls);
+        }
+
+        final WriteAheadRepository<DummyRecord> recoverRepo = new MinimalLockingWriteAheadLog<>(path, numPartitions, serde, null);
+        final Collection<DummyRecord> recoveredRecords = recoverRepo.recoverRecords();
+        assertFalse(recoveredRecords.isEmpty());
+        assertEquals(1, recoveredRecords.size());
+
+        boolean record1 = false, record2 = false, record3 = false;
+        for (final DummyRecord record : recoveredRecords) {
+            switch (record.getId()) {
+                case "1":
+                    record1 = record.getUpdateType() != UpdateType.DELETE;
+                    assertEquals("123", record.getProperty("abc"));
+                    break;
+                case "2":
+                    record2 = record.getUpdateType() != UpdateType.DELETE;
+                    assertEquals("123", record.getProperty("cba"));
+                    break;
+                case "3":
+                    record3 = true;
+                    assertEquals("123", record.getProperty("aaa"));
+                    break;
+            }
+        }
+
+        assertFalse(record1);
+        assertFalse(record2);
         assertTrue(record3);
     }
 

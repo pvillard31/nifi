@@ -16,24 +16,7 @@
  */
 package org.apache.nifi.controller.serialization;
 
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.TransformerFactoryConfigurationError;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
-
+import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.connectable.ConnectableType;
 import org.apache.nifi.connectable.Connection;
@@ -56,11 +39,29 @@ import org.apache.nifi.persistence.TemplateSerializer;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.remote.RemoteGroupPort;
 import org.apache.nifi.remote.RootGroupPort;
+import org.apache.nifi.util.CharacterFilterUtils;
 import org.apache.nifi.util.StringUtils;
 import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.TransformerFactoryConfigurationError;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Serializes a Flow Controller as XML to an output stream.
@@ -78,7 +79,7 @@ public class StandardFlowSerializer implements FlowSerializer {
     }
 
     @Override
-    public void serialize(final FlowController controller, final OutputStream os) throws FlowSerializationException {
+    public void serialize(final FlowController controller, final OutputStream os, final ScheduledStateLookup scheduledStateLookup) throws FlowSerializationException {
         try {
             // create a new, empty document
             final DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
@@ -93,7 +94,7 @@ public class StandardFlowSerializer implements FlowSerializer {
             doc.appendChild(rootNode);
             addTextElement(rootNode, "maxTimerDrivenThreadCount", controller.getMaxTimerDrivenThreadCount());
             addTextElement(rootNode, "maxEventDrivenThreadCount", controller.getMaxEventDrivenThreadCount());
-            addProcessGroup(rootNode, controller.getGroup(controller.getRootGroupId()), "rootGroup");
+            addProcessGroup(rootNode, controller.getGroup(controller.getRootGroupId()), "rootGroup", scheduledStateLookup);
 
             // Add root-level controller services
             final Element controllerServicesNode = doc.createElement("controllerServices");
@@ -143,7 +144,7 @@ public class StandardFlowSerializer implements FlowSerializer {
         parentElement.appendChild(element);
     }
 
-    private void addProcessGroup(final Element parentElement, final ProcessGroup group, final String elementName) {
+    private void addProcessGroup(final Element parentElement, final ProcessGroup group, final String elementName, final ScheduledStateLookup scheduledStateLookup) {
         final Document doc = parentElement.getOwnerDocument();
         final Element element = doc.createElement(elementName);
         parentElement.appendChild(element);
@@ -153,7 +154,7 @@ public class StandardFlowSerializer implements FlowSerializer {
         addTextElement(element, "comment", group.getComments());
 
         for (final ProcessorNode processor : group.getProcessors()) {
-            addProcessor(element, processor);
+            addProcessor(element, processor, scheduledStateLookup);
         }
 
         if (group.isRootGroup()) {
@@ -183,7 +184,7 @@ public class StandardFlowSerializer implements FlowSerializer {
         }
 
         for (final ProcessGroup childGroup : group.getProcessGroups()) {
-            addProcessGroup(element, childGroup, "processGroup");
+            addProcessGroup(element, childGroup, "processGroup", scheduledStateLookup);
         }
 
         for (final RemoteProcessGroup remoteRef : group.getRemoteProcessGroups()) {
@@ -201,6 +202,28 @@ public class StandardFlowSerializer implements FlowSerializer {
         for (final Template template : group.getTemplates()) {
             addTemplate(element, template);
         }
+    }
+
+    private static void addBundle(final Element parentElement, final BundleCoordinate coordinate) {
+        // group
+        final Element groupElement = parentElement.getOwnerDocument().createElement("group");
+        groupElement.setTextContent(coordinate.getGroup());
+
+        // artifact
+        final Element artifactElement = parentElement.getOwnerDocument().createElement("artifact");
+        artifactElement.setTextContent(coordinate.getId());
+
+        // version
+        final Element versionElement = parentElement.getOwnerDocument().createElement("version");
+        versionElement.setTextContent(coordinate.getVersion());
+
+        // bundle
+        final Element bundleElement = parentElement.getOwnerDocument().createElement("bundle");
+        bundleElement.appendChild(groupElement);
+        bundleElement.appendChild(artifactElement);
+        bundleElement.appendChild(versionElement);
+
+        parentElement.appendChild(bundleElement);
     }
 
     private void addStyle(final Element parentElement, final Map<String, String> style) {
@@ -291,6 +314,18 @@ public class StandardFlowSerializer implements FlowSerializer {
         addTextElement(element, "scheduledState", port.getScheduledState().name());
         addTextElement(element, "maxConcurrentTasks", port.getMaxConcurrentTasks());
         addTextElement(element, "useCompression", String.valueOf(port.isUseCompression()));
+        final Integer batchCount = port.getBatchCount();
+        if (batchCount != null && batchCount > 0) {
+            addTextElement(element, "batchCount", batchCount);
+        }
+        final String batchSize = port.getBatchSize();
+        if (batchSize != null && batchSize.length() > 0) {
+            addTextElement(element, "batchSize", batchSize);
+        }
+        final String batchDuration = port.getBatchDuration();
+        if (batchDuration != null && batchDuration.length() > 0) {
+            addTextElement(element, "batchDuration", batchDuration);
+        }
 
         parentElement.appendChild(element);
     }
@@ -328,7 +363,7 @@ public class StandardFlowSerializer implements FlowSerializer {
         parentElement.appendChild(element);
     }
 
-    private void addProcessor(final Element parentElement, final ProcessorNode processor) {
+    private void addProcessor(final Element parentElement, final ProcessorNode processor, final ScheduledStateLookup scheduledStateLookup) {
         final Document doc = parentElement.getOwnerDocument();
         final Element element = doc.createElement("processor");
         parentElement.appendChild(element);
@@ -340,13 +375,16 @@ public class StandardFlowSerializer implements FlowSerializer {
 
         addTextElement(element, "comment", processor.getComments());
         addTextElement(element, "class", processor.getCanonicalClassName());
+
+        addBundle(element, processor.getBundleCoordinate());
+
         addTextElement(element, "maxConcurrentTasks", processor.getMaxConcurrentTasks());
         addTextElement(element, "schedulingPeriod", processor.getSchedulingPeriod());
         addTextElement(element, "penalizationPeriod", processor.getPenalizationPeriod());
         addTextElement(element, "yieldPeriod", processor.getYieldPeriod());
         addTextElement(element, "bulletinLevel", processor.getBulletinLevel().toString());
         addTextElement(element, "lossTolerant", String.valueOf(processor.isLossTolerant()));
-        addTextElement(element, "scheduledState", processor.getScheduledState().name());
+        addTextElement(element, "scheduledState", scheduledStateLookup.getScheduledState(processor).name());
         addTextElement(element, "schedulingStrategy", processor.getSchedulingStrategy().name());
         addTextElement(element, "executionNode", processor.getExecutionNode().name());
         addTextElement(element, "runDurationNanos", processor.getRunDuration(TimeUnit.NANOSECONDS));
@@ -451,6 +489,8 @@ public class StandardFlowSerializer implements FlowSerializer {
         addTextElement(serviceElement, "comment", serviceNode.getComments());
         addTextElement(serviceElement, "class", serviceNode.getCanonicalClassName());
 
+        addBundle(serviceElement, serviceNode.getBundleCoordinate());
+
         final ControllerServiceState state = serviceNode.getState();
         final boolean enabled = (state == ControllerServiceState.ENABLED || state == ControllerServiceState.ENABLING);
         addTextElement(serviceElement, "enabled", String.valueOf(enabled));
@@ -466,6 +506,9 @@ public class StandardFlowSerializer implements FlowSerializer {
         addTextElement(taskElement, "name", taskNode.getName());
         addTextElement(taskElement, "comment", taskNode.getComments());
         addTextElement(taskElement, "class", taskNode.getCanonicalClassName());
+
+        addBundle(taskElement, taskNode.getBundleCoordinate());
+
         addTextElement(taskElement, "schedulingPeriod", taskNode.getSchedulingPeriod());
         addTextElement(taskElement, "scheduledState", taskNode.getScheduledState().name());
         addTextElement(taskElement, "schedulingStrategy", taskNode.getSchedulingStrategy().name());
@@ -482,7 +525,7 @@ public class StandardFlowSerializer implements FlowSerializer {
     private static void addTextElement(final Element element, final String name, final String value) {
         final Document doc = element.getOwnerDocument();
         final Element toAdd = doc.createElement(name);
-        toAdd.setTextContent(value);
+        toAdd.setTextContent(CharacterFilterUtils.filterInvalidXmlCharacters(value)); // value should already be filtered, but just in case ensure there are no invalid xml characters
         element.appendChild(toAdd);
     }
 
