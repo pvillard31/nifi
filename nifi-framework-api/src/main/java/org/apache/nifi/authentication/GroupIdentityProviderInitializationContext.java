@@ -14,39 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package org.apache.nifi.authorization.user;
-
-import java.util.List;
+package org.apache.nifi.authentication;
 
 /**
- * A representation of a NiFi user that has logged into the application
+ *
  */
-public interface NiFiUser {
+public interface GroupIdentityProviderInitializationContext {
 
-    /**
-     * @return the unique identity of this user
-     */
-    String getIdentity();
+    public String getIdentifier();
 
-    /**
-     * @return the list of groups this user belongs to
-     */
-    List<String> getGroups();
-
-    /**
-     * @return the next user in the proxied entities chain, or <code>null</code> if no more users exist in the chain.
-     */
-    NiFiUser getChain();
-
-    /**
-     * @return <code>true</code> if the user is the unauthenticated Anonymous user
-     */
-    boolean isAnonymous();
-
-    /**
-     * @return the address of the client that made the request which created this user
-     */
-    String getClientAddress();
-
+    public GroupIdentityProviderLookup getAuthorityProviderLookup();
 }

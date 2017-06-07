@@ -54,6 +54,7 @@ public abstract class NiFiProperties {
     public static final String FLOW_CONFIGURATION_ARCHIVE_MAX_COUNT = "nifi.flow.configuration.archive.max.count";
     public static final String AUTHORIZER_CONFIGURATION_FILE = "nifi.authorizer.configuration.file";
     public static final String LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE = "nifi.login.identity.provider.configuration.file";
+    public static final String GROUP_IDENTITY_PROVIDER_CONFIGURATION_FILE = "nifi.group.identity.provider.configuration.file";
     public static final String REPOSITORY_DATABASE_DIRECTORY = "nifi.database.directory";
     public static final String RESTORE_DIRECTORY = "nifi.restore.directory";
     public static final String WRITE_DELAY_INTERVAL = "nifi.flowservice.writedelay.interval";
@@ -143,6 +144,7 @@ public abstract class NiFiProperties {
     public static final String SECURITY_NEED_CLIENT_AUTH = "nifi.security.needClientAuth";
     public static final String SECURITY_USER_AUTHORIZER = "nifi.security.user.authorizer";
     public static final String SECURITY_USER_LOGIN_IDENTITY_PROVIDER = "nifi.security.user.login.identity.provider";
+    public static final String SECURITY_USER_GROUP_IDENTITY_PROVIDER = "nifi.security.user.group.identity.provider";
     public static final String SECURITY_OCSP_RESPONDER_URL = "nifi.security.ocsp.responder.url";
     public static final String SECURITY_OCSP_RESPONDER_CERTIFICATE = "nifi.security.ocsp.responder.certificate";
     public static final String SECURITY_IDENTITY_MAPPING_PATTERN_PREFIX = "nifi.security.identity.mapping.pattern.";
@@ -208,6 +210,7 @@ public abstract class NiFiProperties {
     public static final Boolean DEFAULT_AUTO_RESUME_STATE = true;
     public static final String DEFAULT_AUTHORIZER_CONFIGURATION_FILE = "conf/authorizers.xml";
     public static final String DEFAULT_LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE = "conf/login-identity-providers.xml";
+    public static final String DEFAULT_GROUP_IDENTITY_PROVIDER_CONFIGURATION_FILE = "conf/group-identity-providers.xml";
     public static final Integer DEFAULT_REMOTE_INPUT_PORT = null;
     public static final Path DEFAULT_TEMPLATE_DIRECTORY = Paths.get("conf", "templates");
     public static final int DEFAULT_WEB_THREADS = 200;
@@ -517,6 +520,18 @@ public abstract class NiFiProperties {
         final String value = getProperty(LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE);
         if (StringUtils.isBlank(value)) {
             return new File(DEFAULT_LOGIN_IDENTITY_PROVIDER_CONFIGURATION_FILE);
+        } else {
+            return new File(value);
+        }
+    }
+
+    /**
+     * @return the group login identity provider file
+     */
+    public File getGroupIdentityProviderConfigurationFile() {
+        final String value = getProperty(GROUP_IDENTITY_PROVIDER_CONFIGURATION_FILE);
+        if (StringUtils.isBlank(value)) {
+            return new File(DEFAULT_GROUP_IDENTITY_PROVIDER_CONFIGURATION_FILE);
         } else {
             return new File(value);
         }

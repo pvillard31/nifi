@@ -14,39 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.nifi.web.security.spring;
 
-package org.apache.nifi.authorization.user;
-
-import java.util.List;
+import org.apache.nifi.authentication.GroupIdentityProviderInitializationContext;
+import org.apache.nifi.authentication.GroupIdentityProviderLookup;
 
 /**
- * A representation of a NiFi user that has logged into the application
+ *
  */
-public interface NiFiUser {
+public class StandardGroupIdentityProviderInitializationContext implements GroupIdentityProviderInitializationContext {
 
-    /**
-     * @return the unique identity of this user
-     */
-    String getIdentity();
+    private final String identifier;
+    private final GroupIdentityProviderLookup lookup;
 
-    /**
-     * @return the list of groups this user belongs to
-     */
-    List<String> getGroups();
+    public StandardGroupIdentityProviderInitializationContext(String identifier, final GroupIdentityProviderLookup lookup) {
+        this.identifier = identifier;
+        this.lookup = lookup;
+    }
 
-    /**
-     * @return the next user in the proxied entities chain, or <code>null</code> if no more users exist in the chain.
-     */
-    NiFiUser getChain();
+    @Override
+    public String getIdentifier() {
+        return identifier;
+    }
 
-    /**
-     * @return <code>true</code> if the user is the unauthenticated Anonymous user
-     */
-    boolean isAnonymous();
-
-    /**
-     * @return the address of the client that made the request which created this user
-     */
-    String getClientAddress();
+    @Override
+    public GroupIdentityProviderLookup getAuthorityProviderLookup() {
+        return lookup;
+    }
 
 }

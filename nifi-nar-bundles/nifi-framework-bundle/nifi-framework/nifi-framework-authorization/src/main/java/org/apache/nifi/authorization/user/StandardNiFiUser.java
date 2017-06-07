@@ -16,6 +16,7 @@
  */
 package org.apache.nifi.authorization.user;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -24,27 +25,32 @@ import java.util.Objects;
 public class StandardNiFiUser implements NiFiUser {
 
     public static final String ANONYMOUS_IDENTITY = "anonymous";
-    public static final StandardNiFiUser ANONYMOUS = new StandardNiFiUser(ANONYMOUS_IDENTITY, null, null, true);
+    public static final StandardNiFiUser ANONYMOUS = new StandardNiFiUser(ANONYMOUS_IDENTITY, null, null, null, true);
 
     private final String identity;
+    private final List<String> groups;
     private final NiFiUser chain;
     private final String clientAddress;
     private final boolean isAnonymous;
 
     public StandardNiFiUser(String identity) {
-        this(identity, null, null, false);
+        this(identity, null, null, null, false);
     }
 
     public StandardNiFiUser(String identity, String clientAddress) {
-        this(identity, null, clientAddress, false);
+        this(identity, null, null, clientAddress, false);
+    }
+
+    public StandardNiFiUser(String identity, List<String> groups, String clientAddress) {
+        this(identity, groups, null, clientAddress, false);
     }
 
     public StandardNiFiUser(String identity, NiFiUser chain) {
-        this(identity, chain, null, false);
+        this(identity, null, chain, null, false);
     }
 
     public StandardNiFiUser(String identity, NiFiUser chain, String clientAddress) {
-        this(identity, chain, clientAddress, false);
+        this(identity, null, chain, clientAddress, false);
     }
 
     /**
@@ -55,8 +61,9 @@ public class StandardNiFiUser implements NiFiUser {
      * @param clientAddress the source address of the request
      * @param isAnonymous   true to represent the canonical "anonymous" user
      */
-    private StandardNiFiUser(String identity, NiFiUser chain, String clientAddress, boolean isAnonymous) {
+    private StandardNiFiUser(String identity, List<String> groups, NiFiUser chain, String clientAddress, boolean isAnonymous) {
         this.identity = identity;
+        this.groups = groups;
         this.chain = chain;
         this.clientAddress = clientAddress;
         this.isAnonymous = isAnonymous;
@@ -70,12 +77,17 @@ public class StandardNiFiUser implements NiFiUser {
      * @return an anonymous user instance with the identity "anonymous"
      */
     public static StandardNiFiUser populateAnonymousUser(NiFiUser chain, String clientAddress) {
-        return new StandardNiFiUser(ANONYMOUS_IDENTITY, chain, clientAddress, true);
+        return new StandardNiFiUser(ANONYMOUS_IDENTITY, null, chain, clientAddress, true);
     }
 
     @Override
     public String getIdentity() {
         return identity;
+    }
+
+    @Override
+    public List<String> getGroups() {
+        return groups;
     }
 
     @Override

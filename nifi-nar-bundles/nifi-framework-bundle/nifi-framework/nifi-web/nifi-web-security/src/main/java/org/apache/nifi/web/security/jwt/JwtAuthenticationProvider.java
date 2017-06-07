@@ -16,6 +16,9 @@
  */
 package org.apache.nifi.web.security.jwt;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.nifi.authorization.user.NiFiUser;
 import org.apache.nifi.authorization.user.NiFiUserDetails;
 import org.apache.nifi.authorization.user.StandardNiFiUser;
@@ -46,7 +49,9 @@ public class JwtAuthenticationProvider extends NiFiAuthenticationProvider {
 
         try {
             final String jwtPrincipal = jwtService.getAuthenticationFromToken(request.getToken());
-            final NiFiUser user = new StandardNiFiUser(mapIdentity(jwtPrincipal), request.getClientAddress());
+            List<String> test = new ArrayList<String>();
+            test.add("test");
+            final NiFiUser user = new StandardNiFiUser(mapIdentity(jwtPrincipal), test, request.getClientAddress());
             return new NiFiAuthenticationToken(new NiFiUserDetails(user));
         } catch (JwtException e) {
             throw new InvalidAuthenticationException(e.getMessage(), e);

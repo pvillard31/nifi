@@ -18,6 +18,7 @@ package org.apache.nifi.authorization;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -31,6 +32,7 @@ public class AuthorizationRequest {
 
     private final Resource resource;
     private final String identity;
+    private final List<String> groups;
     private final RequestAction action;
     private final boolean isAccessAttempt;
     private final boolean isAnonymous;
@@ -46,6 +48,7 @@ public class AuthorizationRequest {
 
         this.resource = builder.resource;
         this.identity = builder.identity;
+        this.groups = builder.groups;
         this.action = builder.action;
         this.isAccessAttempt = builder.isAccessAttempt;
         this.isAnonymous = builder.isAnonymous;
@@ -142,6 +145,7 @@ public class AuthorizationRequest {
 
         private Resource resource;
         private String identity;
+        private List<String> groups;
         private Boolean isAnonymous;
         private Boolean isAccessAttempt;
         private RequestAction action;
@@ -156,6 +160,11 @@ public class AuthorizationRequest {
 
         public Builder identity(final String identity) {
             this.identity = identity;
+            return this;
+        }
+
+        public Builder groups(final List<String> groups) {
+            this.groups = groups;
             return this;
         }
 

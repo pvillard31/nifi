@@ -21,6 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 import static org.mockito.Mockito.mock;
 
 import java.io.DataOutputStream;
@@ -90,7 +91,6 @@ import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.file.FileUtils;
 import org.junit.After;
 import org.junit.Assert;
-import static org.junit.Assume.assumeFalse;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -2284,6 +2284,11 @@ public class TestPersistentProvenanceRepository {
 
             @Override
             public String getClientAddress() {
+                return null;
+            }
+
+            @Override
+            public List<String> getGroups() {
                 return null;
             }
 

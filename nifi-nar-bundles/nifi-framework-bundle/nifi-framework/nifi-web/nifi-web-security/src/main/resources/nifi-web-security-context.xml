@@ -76,4 +76,9 @@
         <property name="properties" ref="nifiProperties"/>
     </bean>
 
+    <!-- group identity provider -->
+    <bean id="groupIdentityProvider" class="org.apache.nifi.web.security.spring.GroupIdentityProviderFactoryBean">
+        <property name="properties" ref="nifiProperties"/>
+    </bean>
+
 </beans>

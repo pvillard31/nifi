@@ -16,7 +16,6 @@
  */
 package org.apache.nifi.web;
 
-import com.sun.jersey.core.util.MultivaluedMapImpl;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -28,9 +27,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
 import org.apache.nifi.action.Component;
@@ -79,6 +80,8 @@ import org.apache.nifi.web.util.ClientResponseUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.sun.jersey.core.util.MultivaluedMapImpl;
+
 /**
  * Implements the NiFiWebConfigurationContext interface to support a context in both standalone and clustered environments.
  */
@@ -110,6 +113,7 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
             final AuthorizationRequest request = new AuthorizationRequest.Builder()
                     .resource(ResourceFactory.getFlowResource())
                     .identity(user.getIdentity())
+                    .groups(user.getGroups())
                     .anonymous(user.isAnonymous())
                     .accessAttempt(true)
                     .action(RequestAction.READ)
