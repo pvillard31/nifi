@@ -18,7 +18,9 @@
  */
 package org.apache.nifi.processors.kite;
 
-import com.google.common.collect.Lists;
+import static org.apache.nifi.processors.kite.TestUtil.invalidStreamFor;
+import static org.apache.nifi.processors.kite.TestUtil.streamFor;
+import static org.apache.nifi.processors.kite.TestUtil.user;
 
 import java.io.IOException;
 import java.util.List;
@@ -26,12 +28,13 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData.Record;
+import org.apache.nifi.test.ConditionalIgnoreRule.ConditionalIgnore;
+import org.apache.nifi.test.NotRunningOnWindows;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -39,11 +42,9 @@ import org.kitesdk.data.Dataset;
 import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.Datasets;
 
-import static org.apache.nifi.processors.kite.TestUtil.invalidStreamFor;
-import static org.apache.nifi.processors.kite.TestUtil.streamFor;
-import static org.apache.nifi.processors.kite.TestUtil.user;
+import com.google.common.collect.Lists;
 
-@Ignore("Does not work on windows")
+@ConditionalIgnore( condition = NotRunningOnWindows.class )
 public class TestKiteStorageProcessor {
 
     @Rule

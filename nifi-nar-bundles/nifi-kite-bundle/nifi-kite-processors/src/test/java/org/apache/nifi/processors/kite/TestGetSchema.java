@@ -18,6 +18,8 @@
  */
 package org.apache.nifi.processors.kite;
 
+import static org.apache.nifi.processors.kite.TestUtil.bytesFor;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -25,16 +27,15 @@ import java.nio.charset.Charset;
 
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
+import org.apache.nifi.test.ConditionalIgnoreRule.ConditionalIgnore;
+import org.apache.nifi.test.NotRunningOnWindows;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.kitesdk.data.DatasetDescriptor;
 import org.kitesdk.data.Datasets;
 import org.kitesdk.data.spi.DefaultConfiguration;
-
-import static org.apache.nifi.processors.kite.TestUtil.bytesFor;
 
 public class TestGetSchema {
 
@@ -48,7 +49,7 @@ public class TestGetSchema {
     public TemporaryFolder temp = new TemporaryFolder();
 
     @Test
-    @Ignore("Does not work on windows")
+    @ConditionalIgnore( condition = NotRunningOnWindows.class )
     public void testSchemaFromFileSystem() throws IOException {
         File schemaFile = temp.newFile("schema.avsc");
         FileOutputStream out = new FileOutputStream(schemaFile);
@@ -62,7 +63,7 @@ public class TestGetSchema {
     }
 
     @Test
-    @Ignore("Does not work on windows")
+    @ConditionalIgnore( condition = NotRunningOnWindows.class )
     public void testSchemaFromKiteURIs() throws IOException {
         String location = temp.newFolder("ns", "temp").toString();
         if (location.endsWith("/")) {
