@@ -50,7 +50,7 @@ public class TestDeleteSQS {
         mockDeleteSQS = new DeleteSQS() {
 
             protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-                return Arrays.asList(RECEIPT_HANDLE, ACCESS_KEY, SECRET_KEY, CREDENTIALS_FILE, AWS_CREDENTIALS_PROVIDER_SERVICE, REGION, QUEUE_URL, TIMEOUT, PROXY_HOST, PROXY_HOST_PORT);
+                return Arrays.asList(RECEIPT_HANDLE, ACCESS_KEY, SECRET_KEY, CREDENTIALS_FILE, AWS_CREDENTIALS_PROVIDER_SERVICE, REGION, QUEUE_URL, BATCH_SIZE, TIMEOUT, PROXY_HOST, PROXY_HOST_PORT);
             }
 
             protected AmazonSQSClient getClient() {
