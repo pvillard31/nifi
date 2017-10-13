@@ -1,0 +1,25 @@
+{
+	"id": 485,
+	"name": {
+		"last": "Doe",
+		"first": "John"
+	},
+	"address": [
+		{
+			"street": "1 nifi street",
+			"city": "nifi"
+		},
+		{
+			"street": "2 nifi street",
+			"city": "nifi"
+		},
+		{
+			"street": "3 nifi street",
+			"city": "nifi"
+		},
+		{
+			"street": "4 nifi street",
+			"city": "nifi"
+		}
+	]
+}
