@@ -16,12 +16,16 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import io.swagger.annotations.ApiModelProperty;
-import org.apache.nifi.web.api.dto.util.TimeAdapter;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-import java.util.Date;
+
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
+
+import io.swagger.annotations.ApiModelProperty;
 
 /**
  * A bulletin that represents a notification about a passing event including, the source component (if applicable), the timestamp, the message, and where the bulletin originated (if applicable).
@@ -37,6 +41,7 @@ public class BulletinDTO {
     private String sourceName;
     private String level;
     private String message;
+    private List<String> stacktrace;
     private Date timestamp;
 
     /**
@@ -165,6 +170,32 @@ public class BulletinDTO {
 
     public void setTimestamp(Date timestamp) {
         this.timestamp = timestamp;
+    }
+
+    @ApiModelProperty(
+            value = "The list of messages from the exception attached to the bulletin."
+    )
+    public List<String> getStacktrace() {
+        return stacktrace;
+    }
+
+    public void setStacktrace(List<String> stacktrace) {
+        this.stacktrace = stacktrace;
+    }
+
+    public void setStacktrace(Throwable throwable) {
+        List<String> list = new ArrayList<String>();
+
+        if(throwable == null) {
+            return;
+        }
+
+        list.add(throwable.getLocalizedMessage());
+        Throwable cause = throwable.getCause();
+        while(cause != null) {
+            list.add(cause.getLocalizedMessage());
+            cause = cause.getCause();
+        }
     }
 
 }

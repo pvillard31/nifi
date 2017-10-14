@@ -42,7 +42,7 @@ public class ProcessorLogObserver implements LogObserver {
         // the LogLevel is (INFO and ERROR map directly and all others we will just accept as they are).
         final String bulletinLevel = (message.getLevel() == LogLevel.WARN) ? Severity.WARNING.name() : message.getLevel().toString();
 
-        bulletinRepository.addBulletin(BulletinFactory.createBulletin(processorNode, CATEGORY, bulletinLevel, message.getMessage()));
+        bulletinRepository.addBulletin(BulletinFactory.createBulletin(processorNode, CATEGORY, bulletinLevel, message.getMessage(), message.getThrowable()));
     }
 
 }

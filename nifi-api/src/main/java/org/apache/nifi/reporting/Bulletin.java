@@ -30,6 +30,7 @@ public abstract class Bulletin implements Comparable<Bulletin> {
     private String level;
     private String category;
     private String message;
+    private Throwable throwable;
 
     private String groupId;
     private String groupName;
@@ -120,6 +121,14 @@ public abstract class Bulletin implements Comparable<Bulletin> {
 
     public void setSourceType(ComponentType sourceType) {
         this.sourceType = sourceType;
+    }
+
+    public Throwable getThrowable() {
+        return throwable;
+    }
+
+    public void setThrowable(Throwable throwable) {
+        this.throwable = throwable;
     }
 
     @Override
