@@ -2545,7 +2545,7 @@ public final class DtoFactory {
         dto.setLevel(bulletin.getLevel());
         dto.setMessage(bulletin.getMessage());
         if(includeThrowable) {
-            dto.setStacktrace(bulletin.getThrowable());
+            dto.convertStacktrace(bulletin.getThrowable());
         }
         return dto;
     }

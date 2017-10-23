@@ -183,17 +183,17 @@ public class BulletinDTO {
         this.stacktrace = stacktrace;
     }
 
-    public void setStacktrace(Throwable throwable) {
-        List<String> list = new ArrayList<String>();
+    public void convertStacktrace(Throwable throwable) {
+        stacktrace = new ArrayList<String>();
 
         if(throwable == null) {
             return;
         }
 
-        list.add(throwable.getLocalizedMessage());
+        stacktrace.add(throwable.getLocalizedMessage());
         Throwable cause = throwable.getCause();
         while(cause != null) {
-            list.add(cause.getLocalizedMessage());
+            stacktrace.add(cause.getLocalizedMessage());
             cause = cause.getCause();
         }
     }
