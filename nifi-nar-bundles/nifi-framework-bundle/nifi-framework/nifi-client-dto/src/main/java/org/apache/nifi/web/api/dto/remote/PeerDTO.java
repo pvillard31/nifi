@@ -16,9 +16,9 @@
  */
 package org.apache.nifi.web.api.dto.remote;
 
-import io.swagger.annotations.ApiModelProperty;
-
 import javax.xml.bind.annotation.XmlType;
+
+import io.swagger.annotations.ApiModelProperty;
 
 /**
  * Details of a Site-to-Site peer within this NiFi.
@@ -30,6 +30,7 @@ public class PeerDTO {
     private int port;
     private boolean secure;
     private int flowFileCount;
+    private boolean isPrimary;
 
     @ApiModelProperty(
             value = "The hostname of this peer."
@@ -74,5 +75,16 @@ public class PeerDTO {
 
     public void setFlowFileCount(int flowFileCount) {
         this.flowFileCount = flowFileCount;
+    }
+
+    @ApiModelProperty(
+            value = "Returns if this peer is the primary node."
+    )
+    public boolean isPrimary() {
+        return isPrimary;
+    }
+
+    public void setPrimary(boolean isPrimary) {
+        this.isPrimary = isPrimary;
     }
 }

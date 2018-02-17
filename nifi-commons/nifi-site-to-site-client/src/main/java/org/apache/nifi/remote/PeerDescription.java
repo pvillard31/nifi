@@ -21,11 +21,13 @@ public class PeerDescription {
     private final String hostname;
     private final int port;
     private final boolean secure;
+    private final boolean isPrimary;
 
-    public PeerDescription(final String hostname, final int port, final boolean secure) {
+    public PeerDescription(final String hostname, final int port, final boolean secure, final boolean isPrimary) {
         this.hostname = hostname;
         this.port = port;
         this.secure = secure;
+        this.isPrimary = isPrimary;
     }
 
     public String getHostname() {
@@ -38,6 +40,10 @@ public class PeerDescription {
 
     public boolean isSecure() {
         return secure;
+    }
+
+    public boolean isPrimary() {
+        return isPrimary;
     }
 
     @Override
