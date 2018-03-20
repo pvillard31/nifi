@@ -32,7 +32,6 @@ import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
-import org.apache.nifi.components.Validator;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.ProcessContext;
@@ -90,17 +89,17 @@ public class PutMongo extends AbstractMongoProcessor {
     static final PropertyDescriptor UPDATE_QUERY_KEY = new PropertyDescriptor.Builder()
         .name("Update Query Key")
         .description("Key name used to build the update query criteria; this property is valid only when using update mode, "
-                + "otherwise it is ignored")
+                + "otherwise it is ignored. Example: _id")
         .required(false)
-        .addValidator(Validator.VALID)
-        .defaultValue("_id")
+        .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+        .expressionLanguageSupported(true)
         .build();
     static final PropertyDescriptor UPDATE_QUERY = new PropertyDescriptor.Builder()
         .name("putmongo-update-query")
         .displayName("Update Query")
         .description("Specify a full MongoDB query to be used for the lookup query to do an update/upsert.")
         .required(false)
-        .addValidator(Validator.VALID)
+        .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
         .expressionLanguageSupported(true)
         .build();
 
@@ -156,8 +155,7 @@ public class PutMongo extends AbstractMongoProcessor {
     protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
         List<ValidationResult> problems = new ArrayList<>();
 
-        final boolean queryKey = validationContext.getProperty(UPDATE_QUERY_KEY).isSet()
-                && !StringUtils.isBlank(validationContext.getProperty(UPDATE_QUERY_KEY).getValue());
+        final boolean queryKey = validationContext.getProperty(UPDATE_QUERY_KEY).isSet();
         final boolean query    = validationContext.getProperty(UPDATE_QUERY).isSet();
 
         if (queryKey && query) {
@@ -208,7 +206,7 @@ public class PutMongo extends AbstractMongoProcessor {
             } else {
                 // update
                 final boolean upsert = context.getProperty(UPSERT).asBoolean();
-                final String updateKey = context.getProperty(UPDATE_QUERY_KEY).getValue();
+                final String updateKey = context.getProperty(UPDATE_QUERY_KEY).evaluateAttributeExpressions(flowFile).getValue();
                 final String filterQuery = context.getProperty(UPDATE_QUERY).evaluateAttributeExpressions(flowFile).getValue();
                 final Document query;
 
