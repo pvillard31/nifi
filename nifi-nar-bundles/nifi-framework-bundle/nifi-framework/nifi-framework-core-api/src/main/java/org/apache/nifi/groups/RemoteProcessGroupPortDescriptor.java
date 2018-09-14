@@ -65,6 +65,11 @@ public interface RemoteProcessGroupPortDescriptor {
     Boolean getUseCompression();
 
     /**
+     * @return Whether the flow files are pulled based on attribute value
+     */
+    Boolean isHostBasedPullEnabled();
+
+    /**
      * @return Preferred number of flow files to include in a transaction
      */
     Integer getBatchCount();

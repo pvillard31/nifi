@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.nifi.connectable.Size;
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.service.ControllerServiceState;
@@ -48,9 +49,9 @@ import org.apache.nifi.web.api.dto.ProcessorConfigDTO;
 import org.apache.nifi.web.api.dto.ProcessorDTO;
 import org.apache.nifi.web.api.dto.RemoteProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ReportingTaskDTO;
+import org.apache.nifi.web.api.dto.VersionControlInformationDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.nifi.web.api.dto.VersionControlInformationDTO;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -402,6 +403,7 @@ public class FlowFromDOMFactory {
         descriptor.setComments(getString(element, "comments"));
         descriptor.setConcurrentlySchedulableTaskCount(getInt(element, "maxConcurrentTasks"));
         descriptor.setUseCompression(getBoolean(element, "useCompression"));
+        descriptor.isHostBasedPullEnabled(getBoolean(element, "isHostBasedPullEnabled"));
         descriptor.setBatchCount(getOptionalInt(element, "batchCount"));
         descriptor.setBatchSize(getString(element, "batchSize"));
         descriptor.setBatchDuration(getString(element, "batchDuration"));

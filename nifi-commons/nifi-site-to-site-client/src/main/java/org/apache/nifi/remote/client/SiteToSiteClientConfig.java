@@ -117,6 +117,12 @@ public interface SiteToSiteClientConfig extends Serializable {
     boolean isUseCompression();
 
     /**
+     * @return a boolean indicating whether or not flow files pulling should be
+     * based on a specific attribute matching the peer host
+     */
+    boolean isHostBasedPullEnabled();
+
+    /**
      * @return a transport protocol to use
      */
     SiteToSiteTransportProtocol getTransportProtocol();

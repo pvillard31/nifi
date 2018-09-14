@@ -135,6 +135,7 @@ import static org.apache.nifi.remote.protocol.http.HttpHeaders.HANDSHAKE_PROPERT
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.HANDSHAKE_PROPERTY_BATCH_SIZE;
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.HANDSHAKE_PROPERTY_REQUEST_EXPIRATION;
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.HANDSHAKE_PROPERTY_USE_COMPRESSION;
+import static org.apache.nifi.remote.protocol.http.HttpHeaders.HANDSHAKE_PROPERTY_HOST_BASED_PULL;
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.LOCATION_HEADER_NAME;
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.LOCATION_URI_INTENT_NAME;
 import static org.apache.nifi.remote.protocol.http.HttpHeaders.LOCATION_URI_INTENT_VALUE;
@@ -165,6 +166,7 @@ public class SiteToSiteRestApiClient implements Closeable {
     private CloseableHttpAsyncClient httpAsyncClient;
 
     private boolean compress = false;
+    private boolean isHostBasedPullEnabled = false;
     private InetAddress localAddress = null;
     private long requestExpirationMillis = 0;
     private int serverTransactionTtl = 0;
@@ -1121,6 +1123,10 @@ public class SiteToSiteRestApiClient implements Closeable {
         if (compress) {
             httpRequest.setHeader(HANDSHAKE_PROPERTY_USE_COMPRESSION, "true");
         }
+        
+        if (isHostBasedPullEnabled) {
+            httpRequest.setHeader(HANDSHAKE_PROPERTY_HOST_BASED_PULL, "true");
+        }
 
         if (requestExpirationMillis > 0) {
             httpRequest.setHeader(HANDSHAKE_PROPERTY_REQUEST_EXPIRATION, String.valueOf(requestExpirationMillis));
@@ -1406,6 +1412,10 @@ public class SiteToSiteRestApiClient implements Closeable {
 
     public void setCompress(final boolean compress) {
         this.compress = compress;
+    }
+    
+    public void isHostBasedPullEnabled(final boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled = isHostBasedPullEnabled;
     }
 
     public void setLocalAddress(final InetAddress localAddress) {

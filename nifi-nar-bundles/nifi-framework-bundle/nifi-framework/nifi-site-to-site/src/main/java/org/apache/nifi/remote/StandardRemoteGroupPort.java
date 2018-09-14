@@ -16,6 +16,22 @@
  */
 package org.apache.nifi.remote;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.net.ssl.SSLContext;
+
 import org.apache.nifi.authorization.Resource;
 import org.apache.nifi.authorization.resource.Authorizable;
 import org.apache.nifi.authorization.resource.ResourceFactory;
@@ -55,21 +71,6 @@ import org.apache.nifi.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
 public class StandardRemoteGroupPort extends RemoteGroupPort {
 
     private static final long BATCH_SEND_NANOS = TimeUnit.MILLISECONDS.toNanos(500L); // send batches of up to 500 millis
@@ -83,6 +84,7 @@ public class StandardRemoteGroupPort extends RemoteGroupPort {
     private static final Logger logger = LoggerFactory.getLogger(StandardRemoteGroupPort.class);
     private final RemoteProcessGroup remoteGroup;
     private final AtomicBoolean useCompression = new AtomicBoolean(false);
+    private final AtomicBoolean isHostBasedPullEnabled = new AtomicBoolean(false);
     private final AtomicReference<Integer> batchCount = new AtomicReference<>();
     private final AtomicReference<String> batchSize = new AtomicReference<>();
     private final AtomicReference<String> batchDuration = new AtomicReference<>();
@@ -180,6 +182,7 @@ public class StandardRemoteGroupPort extends RemoteGroupPort {
                 .portIdentifier(getTargetIdentifier())
                 .sslContext(sslContext)
                 .useCompression(isUseCompression())
+                .isHostBasedPullEnabled(isHostBasedPullEnabled())
                 .eventReporter(remoteGroup.getEventReporter())
                 .peerPersistenceFile(getPeerPersistenceFile(getIdentifier(), nifiProperties, remoteGroup.getTransportProtocol()))
                 .nodePenalizationPeriod(penalizationMillis, TimeUnit.MILLISECONDS)
@@ -529,6 +532,16 @@ public class StandardRemoteGroupPort extends RemoteGroupPort {
     @Override
     public boolean isUseCompression() {
         return useCompression.get();
+    }
+
+    @Override
+    public void isHostBasedPullEnabled(final boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled.set(isHostBasedPullEnabled);
+    }
+
+    @Override
+    public boolean isHostBasedPullEnabled() {
+        return isHostBasedPullEnabled.get();
     }
 
     @Override

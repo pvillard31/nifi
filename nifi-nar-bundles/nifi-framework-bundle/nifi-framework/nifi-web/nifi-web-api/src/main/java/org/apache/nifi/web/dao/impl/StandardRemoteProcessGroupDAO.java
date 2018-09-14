@@ -18,7 +18,13 @@ package org.apache.nifi.web.dao.impl;
 
 import static org.apache.nifi.util.StringUtils.isEmpty;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.connectable.ConnectableType;
 import org.apache.nifi.connectable.Position;
 import org.apache.nifi.controller.FlowController;
 import org.apache.nifi.controller.exception.ValidationException;
@@ -34,11 +40,6 @@ import org.apache.nifi.web.api.dto.DtoFactory;
 import org.apache.nifi.web.api.dto.RemoteProcessGroupDTO;
 import org.apache.nifi.web.api.dto.RemoteProcessGroupPortDTO;
 import org.apache.nifi.web.dao.RemoteProcessGroupDAO;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
 
 public class StandardRemoteProcessGroupDAO extends ComponentDAO implements RemoteProcessGroupDAO {
 
@@ -206,6 +207,7 @@ public class StandardRemoteProcessGroupDAO extends ComponentDAO implements Remot
         // verify update when appropriate
         if (isAnyNotNull(remoteProcessGroupPortDto.getConcurrentlySchedulableTaskCount(),
                 remoteProcessGroupPortDto.getUseCompression(),
+                remoteProcessGroupPortDto.isHostBasedPullEnabled(),
                 remoteProcessGroupPortDto.getBatchSettings())) {
             port.verifyCanUpdate();
         }
@@ -350,6 +352,9 @@ public class StandardRemoteProcessGroupDAO extends ComponentDAO implements Remot
         }
         if (isNotNull(remoteProcessGroupPortDto.getUseCompression())) {
             port.setUseCompression(remoteProcessGroupPortDto.getUseCompression());
+        }
+        if (isNotNull(remoteProcessGroupPortDto.isHostBasedPullEnabled()) && port.getConnectableType().equals(ConnectableType.OUTPUT_PORT)) {
+            port.isHostBasedPullEnabled(remoteProcessGroupPortDto.isHostBasedPullEnabled());
         }
 
         final BatchSettingsDTO batchSettingsDTO = remoteProcessGroupPortDto.getBatchSettings();

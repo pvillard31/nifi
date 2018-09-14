@@ -47,4 +47,9 @@ public interface RemoteDestination {
      * to or receiving data from the remote endpoint
      */
     boolean isUseCompression();
+
+    /**
+     * @return whether or not host based pulling should be enabled
+     */
+    boolean isHostBasedPullEnabled();
 }

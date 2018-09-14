@@ -101,6 +101,7 @@
                                     id: remotePortId,
                                     groupId: remoteProcessGroupId,
                                     useCompression: $('#remote-port-use-compression').hasClass('checkbox-checked'),
+                                    isHostBasedPullEnabled: $('#remote-port-host-based-pull').hasClass('checkbox-checked'),
                                     concurrentlySchedulableTaskCount: remotePortConcurrentTasks,
                                     batchSettings : {
                                         count: remotePortBatchCount,
@@ -137,9 +138,16 @@
                                     compressionLabel = 'Yes';
                                 }
 
+                                // determine the host based pull label
+                                var hostBasedPullLabel = 'No';
+                                if (remotePort.isHostBasedPullEnabled === true) {
+                                	hostBasedPullLabel = 'Yes';
+                                }
+
                                 // set the new values
                                 $('#' + remotePortId + '-concurrent-tasks').text(remotePort.concurrentlySchedulableTaskCount);
                                 $('#' + remotePortId + '-compression').text(compressionLabel);
+                                $('#' + remotePortId + '-host-based-pull').text(hostBasedPullLabel);
 
                                 var batchSettings = getBatchSettingsDisplayValues(remotePort);
                                 $('#' + remotePortId + '-batch-count').text(batchSettings.count);
@@ -202,6 +210,7 @@
                     $('#remote-port-name').text('');
                     $('#remote-port-concurrent-tasks').val('');
                     $('#remote-port-use-compression').removeClass('checkbox-checked checkbox-unchecked');
+                    $('#remote-port-host-based-pull').removeClass('checkbox-checked checkbox-unchecked');
                     $('#remote-port-batch-count').val('');
                     $('#remote-port-batch-size').val('');
                     $('#remote-port-batch-duration').val('');
@@ -337,12 +346,13 @@
                     var portName = $('#' + portId + '-name').text();
                     var portConcurrentTasks = $('#' + portId + '-concurrent-tasks').text();
                     var portCompression = $('#' + portId + '-compression').text() === 'Yes';
+                    var hostBasedPull = $('#' + portId + '-host-based-pull').text() === 'Yes';
                     var batchCount = $('#' + portId + '-batch-count').text();
                     var batchSize = $('#' + portId + '-batch-size').text();
                     var batchDuration = $('#' + portId + '-batch-duration').text();
 
                     // show the configuration dialog
-                    configureRemotePort(port.id, portName, portConcurrentTasks, portCompression, batchCount, batchSize, batchDuration, portType);
+                    configureRemotePort(port.id, portName, portConcurrentTasks, portCompression, hostBasedPull, batchCount, batchSize, batchDuration, portType);
                 }).appendTo(portContainerEditContainer);
 
                 // show/hide the edit button as appropriate
@@ -525,8 +535,26 @@
             '<div id="' + portId + '-compression">' + compressionLabel + '</div>' +
             '</div>' +
             '</div>').appendTo(compressionContainer);
+        
+        var hostBasedPullContainer = $('<div class="host-based-pull-container"></div>').appendTo(portContainerDetailsContainer);
 
-        // clear: Concurrent Tasks, Compressed
+        // determine the host based pull label
+        var hostBasedPullLabel = 'No';
+        if (port.isHostBasedPullEnabled === true) {
+        	hostBasedPullLabel = 'Yes';
+        }
+
+        // add this ports host based pull config
+        $('<div>' +
+            '<div class="setting-name">' +
+            'Host Based Pull' +
+            '</div>' +
+            '<div class="setting-field">' +
+            '<div id="' + portId + '-host-based-pull">' + hostBasedPullLabel + '</div>' +
+            '</div>' +
+            '</div>').appendTo(hostBasedPullContainer);
+        
+        // clear: Concurrent Tasks, Compressed, Host Based Pull
         $('<div class="clear"></div>').appendTo(portContainerDetailsContainer);
 
         // Batch related settings
@@ -595,6 +623,7 @@
      * @argument {string} portName          The port name
      * @argument {int} portConcurrentTasks  The number of concurrent tasks for the port
      * @argument {boolean} portCompression  The compression flag for the port
+     * @argument {boolean} hostBasedPull	Ths host based pull flag for the port
      * @argument {int} batchCount           The flow file count in a batch transaction
      * @argument {string} batchSize         The size of flow files in a batch transaction
      * @argument {string} batchDuration     The duration of a batch transaction
@@ -611,6 +640,7 @@
             checkState = 'checkbox-checked';
         }
         $('#remote-port-use-compression').addClass(checkState);
+        $('#remote-port-host-based-pull').addClass(checkState);
         $('#remote-port-concurrent-tasks').val(portConcurrentTasks);
         $('#remote-port-batch-count').val(batchCount === 'No value set' ? null : batchCount);
         $('#remote-port-batch-size').val(batchSize === 'No value set' ? null : batchSize);

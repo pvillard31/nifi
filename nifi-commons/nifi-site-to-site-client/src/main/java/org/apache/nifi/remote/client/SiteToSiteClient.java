@@ -16,6 +16,23 @@
  */
 package org.apache.nifi.remote.client;
 
+import java.io.Closeable;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serializable;
+import java.net.InetAddress;
+import java.security.KeyStore;
+import java.security.SecureRandom;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.remote.Transaction;
 import org.apache.nifi.remote.TransferDirection;
@@ -29,22 +46,6 @@ import org.apache.nifi.remote.protocol.DataPacket;
 import org.apache.nifi.remote.protocol.SiteToSiteTransportProtocol;
 import org.apache.nifi.remote.protocol.http.HttpProxy;
 import org.apache.nifi.security.util.KeyStoreUtils;
-
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
-import java.io.Closeable;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Serializable;
-import java.net.InetAddress;
-import java.security.KeyStore;
-import java.security.SecureRandom;
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -165,6 +166,7 @@ public interface SiteToSiteClient extends Closeable {
         private EventReporter eventReporter = EventReporter.NO_OP;
         private File peerPersistenceFile;
         private boolean useCompression;
+        private boolean isHostBasedPullEnabled;
         private String portName;
         private String portIdentifier;
         private int batchCount;
@@ -196,6 +198,7 @@ public interface SiteToSiteClient extends Closeable {
             this.eventReporter = config.getEventReporter();
             this.peerPersistenceFile = config.getPeerPersistenceFile();
             this.useCompression = config.isUseCompression();
+            this.isHostBasedPullEnabled = config.isHostBasedPullEnabled();
             this.transportProtocol = config.getTransportProtocol();
             this.portName = config.getPortName();
             this.portIdentifier = config.getPortIdentifier();
@@ -508,6 +511,11 @@ public interface SiteToSiteClient extends Closeable {
             return this;
         }
 
+        public Builder isHostBasedPullEnabled(final boolean isHostBasedPullEnabled) {
+            this.isHostBasedPullEnabled = isHostBasedPullEnabled;
+            return this;
+        }
+
         /**
          * Specifies the protocol to use for site to site data transport.
          * @param transportProtocol transport protocol
@@ -689,6 +697,14 @@ public interface SiteToSiteClient extends Closeable {
         }
 
         /**
+         * @return a boolean indicating whether or not host based pulling should
+         * be used to transfer data from the remote instance
+         */
+        public boolean isHostBasedPullEnabled() {
+            return isHostBasedPullEnabled;
+        }
+
+        /**
          * @return the transport protocol to use, defaults to RAW
          */
         public SiteToSiteTransportProtocol getTransportProtocol(){
@@ -749,6 +765,7 @@ public interface SiteToSiteClient extends Closeable {
         private final EventReporter eventReporter;
         private final File peerPersistenceFile;
         private final boolean useCompression;
+        private boolean isHostBasedPullEnabled;
         private final SiteToSiteTransportProtocol transportProtocol;
         private final String portName;
         private final String portIdentifier;
@@ -774,6 +791,7 @@ public interface SiteToSiteClient extends Closeable {
             this.eventReporter = null;
             this.peerPersistenceFile = null;
             this.useCompression = false;
+            this.isHostBasedPullEnabled = false;
             this.portName = null;
             this.portIdentifier = null;
             this.batchCount = 0;
@@ -802,6 +820,7 @@ public interface SiteToSiteClient extends Closeable {
             this.eventReporter = builder.eventReporter;
             this.peerPersistenceFile = builder.peerPersistenceFile;
             this.useCompression = builder.useCompression;
+            this.isHostBasedPullEnabled = builder.isHostBasedPullEnabled();
             this.portName = builder.portName;
             this.portIdentifier = builder.portIdentifier;
             this.batchCount = builder.batchCount;
@@ -815,6 +834,11 @@ public interface SiteToSiteClient extends Closeable {
         @Override
         public boolean isUseCompression() {
             return useCompression;
+        }
+
+        @Override
+        public boolean isHostBasedPullEnabled() {
+            return isHostBasedPullEnabled;
         }
 
         @Override

@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+
 import org.apache.nifi.action.Action;
 import org.apache.nifi.action.Component;
 import org.apache.nifi.action.FlowChangeAction;
@@ -93,6 +94,9 @@ public class RemoteProcessGroupAuditor extends NiFiAuditor {
                     .setConvertName(PORT_NAME_CONVERT),
             new ConfigurationRecorder<RemoteGroupPort, RemoteProcessGroupPortDTO>("Compressed",
                     dto -> dto.getUseCompression() != null, RemoteGroupPort::isUseCompression)
+                    .setConvertName(PORT_NAME_CONVERT),
+            new ConfigurationRecorder<RemoteGroupPort, RemoteProcessGroupPortDTO>("Host Based Pull",
+                    dto -> dto.isHostBasedPullEnabled() != null, RemoteGroupPort::isHostBasedPullEnabled)
                     .setConvertName(PORT_NAME_CONVERT),
             new ConfigurationRecorder<RemoteGroupPort, RemoteProcessGroupPortDTO>("Batch Count",
                     dto -> dto.getBatchSettings() != null && dto.getBatchSettings().getCount() != null, RemoteGroupPort::getBatchCount)

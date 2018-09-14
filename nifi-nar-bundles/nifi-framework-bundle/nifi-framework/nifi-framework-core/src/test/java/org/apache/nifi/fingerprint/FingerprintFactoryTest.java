@@ -27,12 +27,13 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.Optional;
+
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
-import java.util.Optional;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -290,6 +291,7 @@ public class FingerprintFactoryTest {
         when(portComponent.getScheduledState()).thenReturn(ScheduledState.RUNNING);
         when(portComponent.getMaxConcurrentTasks()).thenReturn(3);
         when(portComponent.isUseCompression()).thenReturn(true);
+        when(portComponent.isHostBasedPullEnabled()).thenReturn(true);
         when(portComponent.getBatchCount()).thenReturn(1234);
         when(portComponent.getBatchSize()).thenReturn("64KB");
         when(portComponent.getBatchDuration()).thenReturn("10sec");
@@ -302,6 +304,7 @@ public class FingerprintFactoryTest {
                 "NO_VALUE" +
                 "NO_VALUE" +
                 "3" +
+                "true" +
                 "true" +
                 "1234" +
                 "64KB" +

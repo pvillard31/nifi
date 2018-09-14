@@ -38,6 +38,11 @@ public abstract class RemoteGroupPort extends AbstractPort implements Port, Remo
 
     public abstract void setUseCompression(boolean useCompression);
 
+    @Override
+    public abstract boolean isHostBasedPullEnabled();
+
+    public abstract void isHostBasedPullEnabled(boolean isHostBasedPullEnabled);
+
     public abstract boolean getTargetExists();
 
     public abstract String getTargetIdentifier();

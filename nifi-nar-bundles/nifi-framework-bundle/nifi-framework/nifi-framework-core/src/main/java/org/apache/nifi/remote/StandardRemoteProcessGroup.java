@@ -663,6 +663,9 @@ public class StandardRemoteProcessGroup implements RemoteProcessGroup {
             if (descriptor.getUseCompression() != null) {
                 port.setUseCompression(descriptor.getUseCompression());
             }
+            if (descriptor.isHostBasedPullEnabled() != null) {
+                port.isHostBasedPullEnabled(descriptor.isHostBasedPullEnabled());
+            }
             if (descriptor.getBatchCount() != null && descriptor.getBatchCount() > 0) {
                 port.setBatchCount(descriptor.getBatchCount());
             }

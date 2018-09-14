@@ -55,5 +55,10 @@ public enum HandshakeProperty {
      * client when pulling data. This property was introduced in version 5 of
      * the protocol. Value is in milliseconds.
      */
-    BATCH_DURATION;
+    BATCH_DURATION,
+    /**
+     * Boolean value indicating whether or not only flow files with a specific
+     * attribute matching the peer host should be pulled.
+     */
+    HOST_BASED_PULL;
 }

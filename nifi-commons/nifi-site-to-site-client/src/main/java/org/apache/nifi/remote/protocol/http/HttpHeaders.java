@@ -27,6 +27,7 @@ public class HttpHeaders {
     public static final String PROTOCOL_VERSION = "x-nifi-site-to-site-protocol-version";
     public static final String SERVER_SIDE_TRANSACTION_TTL = "x-nifi-site-to-site-server-transaction-ttl";
     public static final String HANDSHAKE_PROPERTY_USE_COMPRESSION = "x-nifi-site-to-site-use-compression";
+    public static final String HANDSHAKE_PROPERTY_HOST_BASED_PULL = "x-nifi-site-to-site-host-based-pull";
     public static final String HANDSHAKE_PROPERTY_REQUEST_EXPIRATION = "x-nifi-site-to-site-request-expiration";
     public static final String HANDSHAKE_PROPERTY_BATCH_COUNT = "x-nifi-site-to-site-batch-count";
     public static final String HANDSHAKE_PROPERTY_BATCH_SIZE = "x-nifi-site-to-site-batch-size";

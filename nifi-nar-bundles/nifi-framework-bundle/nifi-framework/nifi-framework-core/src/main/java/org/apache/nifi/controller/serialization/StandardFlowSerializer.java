@@ -387,6 +387,7 @@ public class StandardFlowSerializer implements FlowSerializer<Document> {
         addTextElement(element, "targetId", port.getTargetIdentifier());
         addTextElement(element, "maxConcurrentTasks", port.getMaxConcurrentTasks());
         addTextElement(element, "useCompression", String.valueOf(port.isUseCompression()));
+        addTextElement(element, "isHostBasedPullEnabled", String.valueOf(port.isHostBasedPullEnabled()));
         final Integer batchCount = port.getBatchCount();
         if (batchCount != null && batchCount > 0) {
             addTextElement(element, "batchCount", batchCount);

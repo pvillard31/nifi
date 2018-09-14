@@ -137,6 +137,10 @@ div.compression-container {
     float: left;
 }
 
+div.host-based-pull-container {
+    float: left;
+}
+
 div.batch-settings-container {
     margin-top: 8px;
 }
@@ -180,6 +184,15 @@ div.disabled-transmission-switch {
 }
 
 #remote-port-use-compression {
+}
+
+#remote-port-host-based-pull-container {
+    margin-left: 8px;
+    margin-top: 5px;
+    float: left;
+}
+
+#remote-port-host-based-pull {
 }
 
 #remote-port-concurrent-task-header {

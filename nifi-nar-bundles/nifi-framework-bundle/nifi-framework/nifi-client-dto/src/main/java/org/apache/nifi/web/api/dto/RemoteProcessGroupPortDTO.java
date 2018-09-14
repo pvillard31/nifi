@@ -16,8 +16,9 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import io.swagger.annotations.ApiModelProperty;
 import javax.xml.bind.annotation.XmlType;
+
+import io.swagger.annotations.ApiModelProperty;
 
 /**
  * Details of a port in a remote process group.
@@ -34,6 +35,7 @@ public class RemoteProcessGroupPortDTO {
     private Integer concurrentlySchedulableTaskCount;
     private Boolean transmitting;
     private Boolean useCompression;
+    private Boolean isHostBasedPullEnabled;
     private Boolean exists;
     private Boolean targetRunning;
     private Boolean connected;
@@ -153,6 +155,20 @@ public class RemoteProcessGroupPortDTO {
 
     public void setUseCompression(Boolean useCompression) {
         this.useCompression = useCompression;
+    }
+
+    /**
+     * @return Whether the flow files are pulled based on attribute value
+     */
+    @ApiModelProperty(
+            value = "Whether the flowfiles are pulled based on attribute value."
+    )
+    public Boolean isHostBasedPullEnabled() {
+        return isHostBasedPullEnabled;
+    }
+
+    public void isHostBasedPullEnabled(Boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled = isHostBasedPullEnabled;
     }
 
     /**

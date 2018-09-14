@@ -29,6 +29,7 @@ public class StandardRemoteProcessGroupPortDescriptor implements RemoteProcessGr
     private Integer concurrentlySchedulableTaskCount;
     private Boolean transmitting;
     private Boolean useCompression;
+    private Boolean isHostBasedPullEnabled;
     private Integer batchCount;
     private String batchSize;
     private String batchDuration;
@@ -106,6 +107,15 @@ public class StandardRemoteProcessGroupPortDescriptor implements RemoteProcessGr
 
     public void setUseCompression(Boolean useCompression) {
         this.useCompression = useCompression;
+    }
+
+    @Override
+    public Boolean isHostBasedPullEnabled() {
+        return isHostBasedPullEnabled;
+    }
+
+    public void isHostBasedPullEnabled(Boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled = isHostBasedPullEnabled;
     }
 
     @Override

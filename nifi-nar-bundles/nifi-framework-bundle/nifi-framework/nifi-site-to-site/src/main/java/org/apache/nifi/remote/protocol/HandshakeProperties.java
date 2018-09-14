@@ -23,6 +23,7 @@ public class HandshakeProperties {
     private String commsIdentifier;
     private String transitUriPrefix = null;
     private boolean useGzip;
+    private boolean isHostBasedPullEnabled;
     private long expirationMillis;
     private int batchCount = 0;
     private long batchBytes = 0L;
@@ -91,5 +92,13 @@ public class HandshakeProperties {
             throw new HandshakeException("Cannot request Batch Duration less than 1; requested value: " + batchDurationNanos);
         }
         this.batchDurationNanos = batchDurationNanos;
+    }
+
+    public boolean isHostBasedPullEnabled() {
+        return isHostBasedPullEnabled;
+    }
+
+    public void setHostBasedPullEnabled(boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled = isHostBasedPullEnabled;
     }
 }

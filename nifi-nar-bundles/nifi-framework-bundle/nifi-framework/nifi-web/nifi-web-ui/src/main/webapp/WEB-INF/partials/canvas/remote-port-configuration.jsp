@@ -36,6 +36,13 @@
                     <div id="remote-port-use-compression" class="nf-checkbox"></div>
                     <span class="nf-checkbox-label">Compressed</span>
                 </div>
+                <div id="remote-port-host-based-pull-container">
+                    <div id="remote-port-host-based-pull" class="nf-checkbox"></div>
+                    <span class="nf-checkbox-label">
+                    	Host Based Pull
+                    	<div class="fa fa-question-circle" alt="Info" title="If only remote flow files with matching s2s.host attribute should be pulled."></div>
+                    </span>
+                </div>
             </div>
             <div class="clear"></div>
         </div>

@@ -16,6 +16,16 @@
  */
 package org.apache.nifi.remote.protocol.socket;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.remote.Peer;
 import org.apache.nifi.remote.PeerDescription;
@@ -39,16 +49,6 @@ import org.apache.nifi.remote.protocol.ResponseCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-
 public class SocketClientProtocol implements ClientProtocol {
 
     // Version 6 added to support Zero-Master Clustering, which was introduced in NiFi 1.0.0
@@ -56,6 +56,7 @@ public class SocketClientProtocol implements ClientProtocol {
 
     private RemoteDestination destination;
     private boolean useCompression = false;
+    private boolean isHostBasedPullEnabled = false;
 
     private String commsIdentifier;
     private boolean handshakeComplete = false;
@@ -96,6 +97,10 @@ public class SocketClientProtocol implements ClientProtocol {
         this.useCompression = destination.isUseCompression();
     }
 
+    public void isHostBasedPullEnabled(final boolean isHostBasedPullEnabled) {
+        this.isHostBasedPullEnabled = isHostBasedPullEnabled;
+    }
+
     public void setTimeout(final int timeoutMillis) {
         this.timeoutMillis = timeoutMillis;
     }
@@ -114,6 +119,7 @@ public class SocketClientProtocol implements ClientProtocol {
 
         final Map<HandshakeProperty, String> properties = new HashMap<>();
         properties.put(HandshakeProperty.GZIP, String.valueOf(useCompression));
+        properties.put(HandshakeProperty.HOST_BASED_PULL, String.valueOf(isHostBasedPullEnabled));
 
         if (destinationId != null) {
             properties.put(HandshakeProperty.PORT_IDENTIFIER, destinationId);

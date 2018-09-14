@@ -16,12 +16,28 @@
  */
 package org.apache.nifi.remote.protocol;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.CRC32;
+import java.util.zip.CheckedInputStream;
+import java.util.zip.CheckedOutputStream;
+
 import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.connectable.Port;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.flowfile.attributes.SiteToSiteAttributes;
 import org.apache.nifi.groups.ProcessGroup;
+import org.apache.nifi.processor.FlowFileFilter;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
@@ -41,21 +57,6 @@ import org.apache.nifi.util.StopWatch;
 import org.apache.nifi.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.zip.CRC32;
-import java.util.zip.CheckedInputStream;
-import java.util.zip.CheckedOutputStream;
 
 public abstract class AbstractFlowFileServerProtocol implements ServerProtocol {
 
@@ -105,6 +106,9 @@ public abstract class AbstractFlowFileServerProtocol implements ServerProtocol {
                         confirmed.setUseGzip(useGzip);
                         break;
                     }
+                    case HOST_BASED_PULL:
+                        confirmed.setHostBasedPullEnabled(Boolean.parseBoolean(value));
+                        break;
                     case REQUEST_EXPIRATION_MILLIS:
                         confirmed.setExpirationMillis(Long.parseLong(value));
                         break;
@@ -222,7 +226,14 @@ public abstract class AbstractFlowFileServerProtocol implements ServerProtocol {
             remoteDn = "none";
         }
 
-        FlowFile flowFile = session.get();
+        FlowFile flowFile;
+
+        if(handshakeProperties.isHostBasedPullEnabled()) {
+            flowFile = getHostBasedFlowFile(session, peer.getHost());
+        } else {
+            flowFile = session.get();
+        }
+
         if (flowFile == null) {
             // we have no data to send. Notify the peer.
             logger.debug("{} No data to send to {}", this, peer);
@@ -300,7 +311,11 @@ public abstract class AbstractFlowFileServerProtocol implements ServerProtocol {
 
             if (poll) {
                 // we've not elapsed the requested sending duration, so get more data.
-                flowFile = session.get();
+                if(handshakeProperties.isHostBasedPullEnabled()) {
+                    flowFile = getHostBasedFlowFile(session, peer.getHost());
+                } else {
+                    flowFile = session.get();
+                }
             } else {
                 flowFile = null;
             }
@@ -319,6 +334,20 @@ public abstract class AbstractFlowFileServerProtocol implements ServerProtocol {
         FlowFileTransaction transaction = new FlowFileTransaction(session, context, stopWatch, bytesSent, flowFilesSent, calculatedCRC);
         return commitTransferTransaction(peer, transaction);
 
+    }
+
+    private FlowFile getHostBasedFlowFile(final ProcessSession session, String host) {
+        return session.get(new FlowFileFilter() {
+            @Override
+            public FlowFileFilterResult filter(FlowFile flowFile) {
+                final String value = flowFile.getAttribute(SiteToSiteAttributes.S2S_HOST.key());
+                if(host.equals(value)) {
+                    return FlowFileFilterResult.ACCEPT_AND_TERMINATE;
+                } else {
+                    return FlowFileFilterResult.REJECT_AND_CONTINUE;
+                }
+            }
+        }).get(0);
     }
 
     protected String createTransitUri(Peer peer, String sourceFlowFileIdentifier) {

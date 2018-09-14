@@ -16,6 +16,11 @@
  */
 package org.apache.nifi.remote.client.socket;
 
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.nifi.remote.Communicant;
 import org.apache.nifi.remote.RemoteDestination;
 import org.apache.nifi.remote.Transaction;
@@ -27,17 +32,13 @@ import org.apache.nifi.remote.protocol.DataPacket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
 public class SocketClient extends AbstractSiteToSiteClient {
 
     private static final Logger logger = LoggerFactory.getLogger(SocketClient.class);
 
     private final EndpointConnectionPool pool;
     private final boolean compress;
+    private final boolean isHostBasedPullEnabled;
     private final String portName;
     private final long penalizationNanos;
     private volatile String portIdentifier;
@@ -56,6 +57,7 @@ public class SocketClient extends AbstractSiteToSiteClient {
         );
 
         this.compress = config.isUseCompression();
+        this.isHostBasedPullEnabled = config.isHostBasedPullEnabled();
         this.portIdentifier = config.getPortIdentifier();
         this.portName = config.getPortName();
         this.penalizationNanos = config.getPenalizationPeriod(TimeUnit.NANOSECONDS);
@@ -109,6 +111,11 @@ public class SocketClient extends AbstractSiteToSiteClient {
             @Override
             public boolean isUseCompression() {
                 return compress;
+            }
+
+            @Override
+            public boolean isHostBasedPullEnabled() {
+                return isHostBasedPullEnabled;
             }
         };
     }
