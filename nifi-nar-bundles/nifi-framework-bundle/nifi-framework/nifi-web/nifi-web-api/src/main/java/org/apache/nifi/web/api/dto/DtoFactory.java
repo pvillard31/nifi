@@ -1585,7 +1585,7 @@ public final class DtoFactory {
         dto.setTargetRunning(port.isTargetRunning());
         dto.setConcurrentlySchedulableTaskCount(port.getMaxConcurrentTasks());
         dto.setUseCompression(port.isUseCompression());
-        dto.isHostBasedPullEnabled(port.isHostBasedPullEnabled());
+        dto.setIsHostBasedPullEnabled(port.isHostBasedPullEnabled());
         dto.setExists(port.getTargetExists());
         dto.setVersionedComponentId(port.getVersionedComponentId().orElse(null));
 
@@ -3869,7 +3869,7 @@ public final class DtoFactory {
         copy.setTransmitting(original.isTransmitting());
         copy.setConcurrentlySchedulableTaskCount(original.getConcurrentlySchedulableTaskCount());
         copy.setUseCompression(original.getUseCompression());
-        copy.isHostBasedPullEnabled(original.isHostBasedPullEnabled());
+        copy.setIsHostBasedPullEnabled(original.getIsHostBasedPullEnabled());
         copy.setExists(original.getExists());
         copy.setVersionedComponentId(original.getVersionedComponentId());
 

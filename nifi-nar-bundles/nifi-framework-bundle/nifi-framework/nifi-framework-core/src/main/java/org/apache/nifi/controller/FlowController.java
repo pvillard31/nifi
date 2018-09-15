@@ -2257,7 +2257,7 @@ public class FlowController implements EventAccess, ControllerServiceProvider, R
                 descriptor.setConcurrentlySchedulableTaskCount(port.getConcurrentlySchedulableTaskCount());
                 descriptor.setTransmitting(port.isTransmitting());
                 descriptor.setUseCompression(port.getUseCompression());
-                descriptor.isHostBasedPullEnabled(port.isHostBasedPullEnabled());
+                descriptor.isHostBasedPullEnabled(port.getIsHostBasedPullEnabled());
                 final BatchSettingsDTO batchSettings = port.getBatchSettings();
                 if (batchSettings != null) {
                     descriptor.setBatchCount(batchSettings.getCount());

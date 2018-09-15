@@ -163,11 +163,11 @@ public class RemoteProcessGroupPortDTO {
     @ApiModelProperty(
             value = "Whether the flowfiles are pulled based on attribute value."
     )
-    public Boolean isHostBasedPullEnabled() {
+    public Boolean getIsHostBasedPullEnabled() {
         return isHostBasedPullEnabled;
     }
 
-    public void isHostBasedPullEnabled(Boolean isHostBasedPullEnabled) {
+    public void setIsHostBasedPullEnabled(Boolean isHostBasedPullEnabled) {
         this.isHostBasedPullEnabled = isHostBasedPullEnabled;
     }
 

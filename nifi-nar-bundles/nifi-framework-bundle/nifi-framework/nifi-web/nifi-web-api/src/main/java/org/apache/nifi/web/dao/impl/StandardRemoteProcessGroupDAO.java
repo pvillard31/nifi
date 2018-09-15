@@ -207,7 +207,7 @@ public class StandardRemoteProcessGroupDAO extends ComponentDAO implements Remot
         // verify update when appropriate
         if (isAnyNotNull(remoteProcessGroupPortDto.getConcurrentlySchedulableTaskCount(),
                 remoteProcessGroupPortDto.getUseCompression(),
-                remoteProcessGroupPortDto.isHostBasedPullEnabled(),
+                remoteProcessGroupPortDto.getIsHostBasedPullEnabled(),
                 remoteProcessGroupPortDto.getBatchSettings())) {
             port.verifyCanUpdate();
         }
@@ -353,8 +353,8 @@ public class StandardRemoteProcessGroupDAO extends ComponentDAO implements Remot
         if (isNotNull(remoteProcessGroupPortDto.getUseCompression())) {
             port.setUseCompression(remoteProcessGroupPortDto.getUseCompression());
         }
-        if (isNotNull(remoteProcessGroupPortDto.isHostBasedPullEnabled()) && port.getConnectableType().equals(ConnectableType.OUTPUT_PORT)) {
-            port.isHostBasedPullEnabled(remoteProcessGroupPortDto.isHostBasedPullEnabled());
+        if (isNotNull(remoteProcessGroupPortDto.getIsHostBasedPullEnabled()) && port.getConnectableType().equals(ConnectableType.REMOTE_OUTPUT_PORT)) {
+            port.isHostBasedPullEnabled(remoteProcessGroupPortDto.getIsHostBasedPullEnabled());
         }
 
         final BatchSettingsDTO batchSettingsDTO = remoteProcessGroupPortDto.getBatchSettings();
