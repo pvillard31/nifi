@@ -17,11 +17,11 @@
 
 package org.apache.nifi.controller.repository.metrics;
 
-import org.apache.nifi.controller.repository.FlowFileEvent;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.apache.nifi.controller.repository.FlowFileEvent;
 
 public class EventSumValue {
     private volatile boolean empty = true;
@@ -30,16 +30,19 @@ public class EventSumValue {
     private int flowFilesOut = 0;
     private int flowFilesRemoved = 0;
     private int flowFilesReceived = 0;
+    private int flowFilesExpired = 0;
     private int flowFilesSent = 0;
 
     private long contentSizeIn = 0;
     private long contentSizeOut = 0;
     private long contentSizeRemoved = 0;
+    private long contentSizeExpired = 0;
+
     private long bytesRead = 0;
     private long bytesWritten = 0;
-
     private long bytesReceived = 0;
     private long bytesSent = 0;
+
     private long processingNanos = 0;
     private long aggregateLineageMillis = 0;
     private int invocations = 0;
@@ -63,11 +66,13 @@ public class EventSumValue {
         this.contentSizeIn += flowFileEvent.getContentSizeIn();
         this.contentSizeOut += flowFileEvent.getContentSizeOut();
         this.contentSizeRemoved += flowFileEvent.getContentSizeRemoved();
+        this.contentSizeExpired += flowFileEvent.getContentSizeExpired();
         this.flowFilesIn += flowFileEvent.getFlowFilesIn();
         this.flowFilesOut += flowFileEvent.getFlowFilesOut();
         this.flowFilesReceived += flowFileEvent.getFlowFilesReceived();
         this.flowFilesRemoved += flowFileEvent.getFlowFilesRemoved();
         this.flowFilesSent += flowFileEvent.getFlowFilesSent();
+        this.flowFilesExpired += flowFileEvent.getFlowFilesExpired();
         this.invocations += flowFileEvent.getInvocations();
         this.processingNanos += flowFileEvent.getProcessingNanoseconds();
 
@@ -99,10 +104,12 @@ public class EventSumValue {
         event.setContentSizeIn(contentSizeIn);
         event.setContentSizeOut(contentSizeOut);
         event.setContentSizeRemoved(contentSizeRemoved);
+        event.setContentSizeExpired(contentSizeExpired);
         event.setFlowFilesIn(flowFilesIn);
         event.setFlowFilesOut(flowFilesOut);
         event.setFlowFilesReceived(flowFilesReceived);
         event.setFlowFilesRemoved(flowFilesRemoved);
+        event.setFlowFilesExpired(flowFilesExpired);
         event.setFlowFilesSent(flowFilesSent);
         event.setInvocations(invocations);
         event.setProcessingNanos(processingNanos);
@@ -124,10 +131,12 @@ public class EventSumValue {
             this.contentSizeIn += other.contentSizeIn;
             this.contentSizeOut += other.contentSizeOut;
             this.contentSizeRemoved += other.contentSizeRemoved;
+            this.contentSizeExpired += other.contentSizeExpired;
             this.flowFilesIn += other.flowFilesIn;
             this.flowFilesOut += other.flowFilesOut;
             this.flowFilesReceived += other.flowFilesReceived;
             this.flowFilesRemoved += other.flowFilesRemoved;
+            this.flowFilesExpired += other.flowFilesExpired;
             this.flowFilesSent += other.flowFilesSent;
             this.invocations += other.invocations;
             this.processingNanos += other.processingNanos;
@@ -162,10 +171,12 @@ public class EventSumValue {
             this.contentSizeIn -= other.contentSizeIn;
             this.contentSizeOut -= other.contentSizeOut;
             this.contentSizeRemoved -= other.contentSizeRemoved;
+            this.contentSizeExpired -= other.contentSizeExpired;
             this.flowFilesIn -= other.flowFilesIn;
             this.flowFilesOut -= other.flowFilesOut;
             this.flowFilesReceived -= other.flowFilesReceived;
             this.flowFilesRemoved -= other.flowFilesRemoved;
+            this.flowFilesExpired -= other.flowFilesExpired;
             this.flowFilesSent -= other.flowFilesSent;
             this.invocations -= other.invocations;
             this.processingNanos -= other.processingNanos;

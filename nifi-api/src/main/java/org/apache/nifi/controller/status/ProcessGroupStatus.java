@@ -16,12 +16,12 @@
  */
 package org.apache.nifi.controller.status;
 
-import org.apache.nifi.registry.flow.VersionedFlowState;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.apache.nifi.registry.flow.VersionedFlowState;
 
 /**
  */
@@ -448,6 +448,8 @@ public class ProcessGroupStatus implements Cloneable {
             merged.setInputBytes(merged.getInputBytes() + statusToMerge.getInputBytes());
             merged.setOutputCount(merged.getOutputCount() + statusToMerge.getOutputCount());
             merged.setOutputBytes(merged.getOutputBytes() + statusToMerge.getOutputBytes());
+            merged.setExpiredCount(merged.getExpiredCount() + statusToMerge.getExpiredCount());
+            merged.setExpiredBytes(merged.getExpiredBytes() + statusToMerge.getExpiredBytes());
         }
         target.setConnectionStatus(mergedConnectionMap.values());
 

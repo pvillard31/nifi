@@ -63,6 +63,8 @@
 	{ "name" : "destinationName", "type" : ["string", "null"]},
 	{ "name" : "maxQueuedBytes", "type" : ["long", "null"]},
 	{ "name" : "maxQueuedCount", "type" : ["long", "null"]},
+	{ "name" : "expiredBytes", "type" : ["long", "null"]},
+	{ "name" : "expiredCount", "type" : ["long", "null"]},
 	{ "name" : "queuedBytes", "type" : ["long", "null"]},
 	{ "name" : "backPressureBytesThreshold", "type" : ["long", "null"]},
 	{ "name" : "backPressureObjectThreshold", "type" : ["long", "null"]},

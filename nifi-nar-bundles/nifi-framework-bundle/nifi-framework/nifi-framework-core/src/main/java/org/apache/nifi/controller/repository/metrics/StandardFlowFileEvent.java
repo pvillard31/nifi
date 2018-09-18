@@ -16,18 +16,20 @@
  */
 package org.apache.nifi.controller.repository.metrics;
 
-import org.apache.nifi.controller.repository.FlowFileEvent;
-
 import java.util.Map;
+
+import org.apache.nifi.controller.repository.FlowFileEvent;
 
 public final class StandardFlowFileEvent implements FlowFileEvent, Cloneable {
 
     private int flowFilesIn;
     private int flowFilesOut;
     private int flowFilesRemoved;
+    private int flowFilesExpired;
     private long contentSizeIn;
     private long contentSizeOut;
     private long contentSizeRemoved;
+    private long contentSizeExpired;
     private long bytesRead;
     private long bytesWritten;
     private long processingNanos;
@@ -193,5 +195,23 @@ public final class StandardFlowFileEvent implements FlowFileEvent, Cloneable {
 
     public void setCounters(final Map<String, Long> counters) {
         this.counters = counters;
+    }
+
+    @Override
+    public int getFlowFilesExpired() {
+        return flowFilesExpired;
+    }
+
+    public void setFlowFilesExpired(int flowFilesExpired) {
+        this.flowFilesExpired = flowFilesExpired;
+    }
+
+    @Override
+    public long getContentSizeExpired() {
+        return contentSizeExpired;
+    }
+
+    public void setContentSizeExpired(long contentSizeExpired) {
+        this.contentSizeExpired = contentSizeExpired;
     }
 }

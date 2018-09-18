@@ -16,14 +16,14 @@
  */
 package org.apache.nifi.controller.repository;
 
-import org.apache.nifi.controller.repository.metrics.RingBufferEventRepository;
-import org.junit.Test;
-import org.testng.Assert;
-
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.nifi.controller.repository.metrics.RingBufferEventRepository;
+import org.junit.Test;
+import org.testng.Assert;
 
 public class TestRingBufferEventRepository {
 
@@ -161,6 +161,16 @@ public class TestRingBufferEventRepository {
             @Override
             public Map<String, Long> getCounters() {
                 return Collections.emptyMap();
+            }
+
+            @Override
+            public int getFlowFilesExpired() {
+                return 0;
+            }
+
+            @Override
+            public long getContentSizeExpired() {
+                return 0;
             }
         };
     }

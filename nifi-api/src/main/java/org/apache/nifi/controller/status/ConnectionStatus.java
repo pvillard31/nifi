@@ -40,6 +40,8 @@ public class ConnectionStatus implements Cloneable {
     private long outputBytes;
     private int maxQueuedCount;
     private long maxQueuedBytes;
+    private int expiredCount;
+    private long expiredBytes;
 
     public String getId() {
         return id;
@@ -186,6 +188,22 @@ public class ConnectionStatus implements Cloneable {
         this.backPressureBytesThreshold = backPressureBytesThreshold;
     }
 
+    public int getExpiredCount() {
+        return expiredCount;
+    }
+
+    public void setExpiredCount(int expiredCount) {
+        this.expiredCount = expiredCount;
+    }
+
+    public long getExpiredBytes() {
+        return expiredBytes;
+    }
+
+    public void setExpiredBytes(long expiredBytes) {
+        this.expiredBytes = expiredBytes;
+    }
+
     @Override
     public ConnectionStatus clone() {
         final ConnectionStatus clonedObj = new ConnectionStatus();
@@ -206,6 +224,8 @@ public class ConnectionStatus implements Cloneable {
         clonedObj.backPressureObjectThreshold = backPressureObjectThreshold;
         clonedObj.maxQueuedBytes = maxQueuedBytes;
         clonedObj.maxQueuedCount = maxQueuedCount;
+        clonedObj.expiredCount = expiredCount;
+        clonedObj.expiredBytes = expiredBytes;
         return clonedObj;
     }
 
@@ -246,6 +266,10 @@ public class ConnectionStatus implements Cloneable {
         builder.append(maxQueuedCount);
         builder.append(", maxQueueBytes=");
         builder.append(maxQueuedBytes);
+        builder.append(", expiredCount=");
+        builder.append(expiredCount);
+        builder.append(", expiredBytes=");
+        builder.append(expiredBytes);
         builder.append("]");
         return builder.toString();
     }

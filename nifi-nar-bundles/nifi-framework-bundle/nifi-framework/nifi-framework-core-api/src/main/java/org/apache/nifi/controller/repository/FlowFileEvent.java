@@ -26,11 +26,15 @@ public interface FlowFileEvent {
 
     int getFlowFilesRemoved();
 
+    int getFlowFilesExpired();
+
     long getContentSizeIn();
 
     long getContentSizeOut();
 
     long getContentSizeRemoved();
+
+    long getContentSizeExpired();
 
     long getBytesRead();
 

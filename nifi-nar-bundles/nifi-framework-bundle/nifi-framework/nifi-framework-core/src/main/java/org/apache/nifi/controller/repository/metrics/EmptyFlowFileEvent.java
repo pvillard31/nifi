@@ -16,10 +16,10 @@
  */
 package org.apache.nifi.controller.repository.metrics;
 
-import org.apache.nifi.controller.repository.FlowFileEvent;
-
 import java.util.Collections;
 import java.util.Map;
+
+import org.apache.nifi.controller.repository.FlowFileEvent;
 
 public class EmptyFlowFileEvent implements FlowFileEvent {
     public static final EmptyFlowFileEvent INSTANCE = new EmptyFlowFileEvent();
@@ -110,5 +110,15 @@ public class EmptyFlowFileEvent implements FlowFileEvent {
     @Override
     public Map<String, Long> getCounters() {
         return Collections.emptyMap();
+    }
+
+    @Override
+    public int getFlowFilesExpired() {
+        return 0;
+    }
+
+    @Override
+    public long getContentSizeExpired() {
+        return 0;
     }
 }

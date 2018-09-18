@@ -16,6 +16,34 @@
  */
 package org.apache.nifi.controller.repository;
 
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
 import org.apache.nifi.connectable.Connectable;
 import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.controller.ProcessorNode;
@@ -57,34 +85,6 @@ import org.apache.nifi.stream.io.ByteCountingOutputStream;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.Closeable;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * <p>
@@ -242,10 +242,10 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             this.checkpoint = new Checkpoint();
         }
 
-        if (records.isEmpty()) {
-            LOG.trace("{} checkpointed, but no events were performed by this ProcessSession", this);
-            return;
-        }
+        // if (records.isEmpty()) {
+        //    LOG.trace("{} checkpointed, but no events were performed by this ProcessSession", this);
+        //    return;
+        // }
 
         // any drop event that is the result of an auto-terminate should happen at the very end, so we keep the
         // records in a separate List so that they can be persisted to the Provenance Repo after all of the
@@ -502,8 +502,10 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
     private void updateEventRepository(final Checkpoint checkpoint) {
         int flowFilesReceived = 0;
         int flowFilesSent = 0;
+        int flowFilesExpired = 0;
         long bytesReceived = 0L;
         long bytesSent = 0L;
+        long bytesExpired = 0L;
 
         for (final ProvenanceEventRecord event : checkpoint.reportedEvents) {
             if (isSpuriousForkEvent(event, checkpoint.removedFlowFiles)) {
@@ -520,6 +522,9 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
                     flowFilesReceived++;
                     bytesReceived += event.getFileSize();
                     break;
+                case EXPIRE:
+                    flowFilesExpired++;
+                    bytesExpired += event.getFileSize();
                 default:
                     break;
             }
@@ -534,9 +539,11 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             flowFileEvent.setContentSizeIn(checkpoint.contentSizeIn);
             flowFileEvent.setContentSizeOut(checkpoint.contentSizeOut);
             flowFileEvent.setContentSizeRemoved(checkpoint.removedBytes);
+            flowFileEvent.setContentSizeExpired(bytesExpired);
             flowFileEvent.setFlowFilesIn(checkpoint.flowFilesIn);
             flowFileEvent.setFlowFilesOut(checkpoint.flowFilesOut);
             flowFileEvent.setFlowFilesRemoved(checkpoint.removedCount);
+            flowFileEvent.setFlowFilesExpired(flowFilesExpired);
             flowFileEvent.setFlowFilesReceived(flowFilesReceived);
             flowFileEvent.setBytesReceived(bytesReceived);
             flowFileEvent.setFlowFilesSent(flowFilesSent);
@@ -2058,6 +2065,7 @@ public final class StandardProcessSession implements ProcessSession, ProvenanceE
             record.markForDelete();
             expiredRecords.add(record);
             expiredReporter.expire(flowFile, "Expiration Threshold = " + connection.getFlowFileQueue().getFlowFileExpiration());
+            provenanceReporter.expire(flowFile, "Expiration Threshold = " + connection.getFlowFileQueue().getFlowFileExpiration());
             decrementClaimCount(flowFile.getContentClaim());
 
             final long flowFileLife = System.currentTimeMillis() - flowFile.getEntryDate();

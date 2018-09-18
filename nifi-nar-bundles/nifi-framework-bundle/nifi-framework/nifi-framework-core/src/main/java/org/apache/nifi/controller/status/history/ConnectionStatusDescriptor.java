@@ -61,7 +61,21 @@ public enum ConnectionStatusDescriptor {
         "Queued Count",
         "The number of FlowFiles queued in this Connection",
         Formatter.COUNT,
-        s -> Long.valueOf(s.getQueuedCount()));
+        s -> Long.valueOf(s.getQueuedCount())),
+
+    EXPIRED_BYTES(
+        "expiredBytes",
+        "Expired Bytes (5 mins)",
+        "The number of Bytes expired in this Connection in the past 5 minutes",
+        Formatter.DATA_SIZE,
+        ConnectionStatus::getExpiredBytes),
+
+    EXPIRED_COUNT(
+        "expiredCount",
+        "Expired Count (5 mins)",
+        "The number of FlowFiles expired in this Connection in the past 5 minutes",
+        Formatter.COUNT,
+        s -> Long.valueOf(s.getExpiredCount()));
 
 
     private MetricDescriptor<ConnectionStatus> descriptor;
