@@ -16,22 +16,26 @@
  */
 package org.apache.nifi.processors.elasticsearch;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import okhttp3.HttpUrl;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.EventDriven;
-import org.apache.nifi.annotation.behavior.SystemResourceConsideration;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.SupportsBatching;
 import org.apache.nifi.annotation.behavior.SystemResource;
+import org.apache.nifi.annotation.behavior.SystemResourceConsideration;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
@@ -49,18 +53,16 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.util.StringUtils;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
@@ -125,6 +127,15 @@ public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
             .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .addValidator(StandardValidators.NON_EMPTY_EL_VALIDATOR)
             .defaultValue("index")
+            .build();
+
+    public static final PropertyDescriptor VERSION = new PropertyDescriptor.Builder()
+            .name("put-es-version")
+            .displayName("Version")
+            .description("The version to specify in the bulk operation. If not set, the version is not specified.")
+            .required(false)
+            .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
+            .addValidator(StandardValidators.POSITIVE_INTEGER_VALIDATOR)
             .build();
 
     public static final PropertyDescriptor BATCH_SIZE = new PropertyDescriptor.Builder()
@@ -200,6 +211,7 @@ public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
         return problems;
     }
 
+    @Override
     @OnScheduled
     public void setup(ProcessContext context) {
         super.setup(context);
@@ -247,6 +259,7 @@ public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
 
         for (FlowFile file : flowFiles) {
             final String index = context.getProperty(INDEX).evaluateAttributeExpressions(file).getValue();
+            final Integer version = context.getProperty(VERSION).evaluateAttributeExpressions(file).asInteger();
             final Charset charset = Charset.forName(context.getProperty(CHARSET).evaluateAttributeExpressions(file).getValue());
             if (StringUtils.isEmpty(index)) {
                 logger.error("No value for index in for {}, transferring to failure", new Object[]{id_attribute, file});
@@ -307,7 +320,7 @@ public class PutElasticsearchHttp extends AbstractElasticsearchHttpProcessor {
                 continue;
             }
 
-            buildBulkCommand(sb, index, docType, indexOp, id, jsonString);
+            buildBulkCommand(sb, index, docType, indexOp, id, jsonString, version);
         }
         if (!flowFilesToTransfer.isEmpty()) {
             RequestBody requestBody = RequestBody.create(MediaType.parse("application/json"), sb.toString());

@@ -16,16 +16,21 @@
  */
 package org.apache.nifi.processors.elasticsearch;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import okhttp3.HttpUrl;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.math.BigInteger;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.EventDriven;
 import org.apache.nifi.annotation.behavior.InputRequirement;
@@ -67,20 +72,17 @@ import org.apache.nifi.serialization.record.type.RecordDataType;
 import org.apache.nifi.serialization.record.util.DataTypeUtils;
 import org.apache.nifi.util.StringUtils;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.math.BigInteger;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
@@ -242,6 +244,7 @@ public class PutElasticsearchHttpRecord extends AbstractElasticsearchHttpProcess
         return problems;
     }
 
+    @Override
     @OnScheduled
     public void setup(ProcessContext context) {
         super.setup(context);
@@ -341,13 +344,13 @@ public class PutElasticsearchHttpRecord extends AbstractElasticsearchHttpProcess
                 final StringBuilder json = new StringBuilder();
 
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                JsonGenerator generator = factory.createJsonGenerator(out);
+                JsonGenerator generator = factory.createGenerator(out);
                 writeRecord(record, record.getSchema(), generator);
                 generator.flush();
                 generator.close();
                 json.append(out.toString());
 
-                buildBulkCommand(sb, index, docType, indexOp, id, json.toString());
+                buildBulkCommand(sb, index, docType, indexOp, id, json.toString(), null);
                 recordCount++;
             }
         } catch (IdentifierNotFoundException infe) {

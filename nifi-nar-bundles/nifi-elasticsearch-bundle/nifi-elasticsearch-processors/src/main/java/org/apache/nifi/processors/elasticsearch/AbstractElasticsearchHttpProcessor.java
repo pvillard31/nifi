@@ -16,15 +16,19 @@
  */
 package org.apache.nifi.processors.elasticsearch;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import okhttp3.Authenticator;
-import okhttp3.Credentials;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.Route;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Proxy;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.net.ssl.SSLContext;
+
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
@@ -39,17 +43,16 @@ import org.apache.nifi.proxy.ProxySpec;
 import org.apache.nifi.ssl.SSLContextService;
 import org.apache.nifi.util.StringUtils;
 
-import javax.net.ssl.SSLContext;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.Proxy;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import okhttp3.Authenticator;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.Route;
 
 /**
  * A base class for Elasticsearch processors that use the HTTP API
@@ -282,7 +285,7 @@ public abstract class AbstractElasticsearchHttpProcessor extends AbstractElastic
         return mapper.readTree(in);
     }
 
-    protected void buildBulkCommand(StringBuilder sb, String index, String docType, String indexOp, String id, String jsonString) {
+    protected void buildBulkCommand(StringBuilder sb, String index, String docType, String indexOp, String id, String jsonString, Integer version) {
         if (indexOp.equalsIgnoreCase("index")) {
             sb.append("{\"index\": { \"_index\": \"");
             sb.append(StringEscapeUtils.escapeJson(index));
@@ -294,6 +297,10 @@ public abstract class AbstractElasticsearchHttpProcessor extends AbstractElastic
                 sb.append(StringEscapeUtils.escapeJson(id));
                 sb.append("\"");
             }
+            if (version != null && !StringUtils.isEmpty(Integer.toString(version))) {
+                sb.append(", \"_version\": ");
+                sb.append(version);
+            }
             sb.append("}}\n");
             sb.append(jsonString);
             sb.append("\n");
@@ -304,7 +311,12 @@ public abstract class AbstractElasticsearchHttpProcessor extends AbstractElastic
             sb.append(StringEscapeUtils.escapeJson(docType));
             sb.append("\", \"_id\": \"");
             sb.append(StringEscapeUtils.escapeJson(id));
-            sb.append("\" }\n");
+            sb.append("\"");
+            if (version != null && !StringUtils.isEmpty(Integer.toString(version))) {
+                sb.append(", \"_version\": ");
+                sb.append(version);
+            }
+            sb.append(" }\n");
             sb.append("{\"doc\": ");
             sb.append(jsonString);
             sb.append(", \"doc_as_upsert\": ");
@@ -317,7 +329,12 @@ public abstract class AbstractElasticsearchHttpProcessor extends AbstractElastic
             sb.append(StringEscapeUtils.escapeJson(docType));
             sb.append("\", \"_id\": \"");
             sb.append(StringEscapeUtils.escapeJson(id));
-            sb.append("\" }\n");
+            sb.append("\"");
+            if (version != null && !StringUtils.isEmpty(Integer.toString(version))) {
+                sb.append(", \"_version\": ");
+                sb.append(version);
+            }
+            sb.append(" }\n");
         }
     }
 }
