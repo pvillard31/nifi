@@ -54,6 +54,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
@@ -559,6 +560,8 @@ public class TestValidateRecord {
 
         final JsonTreeReader jsonReader = new JsonTreeReader();
         runner.addControllerService("reader", jsonReader);
+        runner.setProperty(jsonReader, SchemaAccessUtils.SCHEMA_ACCESS_STRATEGY, SchemaAccessUtils.SCHEMA_TEXT_PROPERTY);
+        runner.setProperty(jsonReader, SchemaAccessUtils.SCHEMA_TEXT, validateSchema);
         runner.enableControllerService(jsonReader);
 
         final AvroRecordSetWriter avroWriter = new AvroRecordSetWriter();
@@ -583,11 +586,12 @@ public class TestValidateRecord {
         try (final InputStream in = new ByteArrayInputStream(source); final AvroRecordReader reader = new AvroReaderWithEmbeddedSchema(in)) {
             final Object[] values = reader.nextRecord().getValues();
             assertEquals("uuid", values[0]);
-            assertEquals(2, ((HashMap<?,?>) values[1]).size());
+            assertEquals(2, ((Map<?,?>) values[1]).size());
             final Object[] data = (Object[]) values[2];
-            assertEquals(2, ( (HashMap<?,?>) ((MapRecord) data[0]).getValue("points")).size());
-            assertEquals(2, ( (HashMap<?,?>) ((MapRecord) data[1]).getValue("points")).size());
-            assertEquals(2, ( (HashMap<?,?>) ((MapRecord) data[2]).getValue("points")).size());
+            assertEquals(3, data.length);
+            assertEquals(2, ( (Map<?,?>) ((Record) data[0]).getValue("points")).size());
+            assertEquals(2, ( (Map<?,?>) ((Record) data[1]).getValue("points")).size());
+            assertEquals(2, ( (Map<?,?>) ((Record) data[2]).getValue("points")).size());
         }
     }
 
