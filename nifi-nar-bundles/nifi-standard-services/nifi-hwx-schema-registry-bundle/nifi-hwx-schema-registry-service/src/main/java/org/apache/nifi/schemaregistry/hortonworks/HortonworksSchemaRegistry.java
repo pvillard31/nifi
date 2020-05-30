@@ -62,6 +62,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
+import javax.ws.rs.ForbiddenException;
+
 @Tags({"schema", "registry", "avro", "hortonworks", "hwx"})
 @CapabilityDescription("Provides a Schema Registry Service that interacts with a Hortonworks Schema Registry, available at https://github.com/hortonworks/registry")
 public class HortonworksSchemaRegistry extends AbstractControllerService implements SchemaRegistry {
@@ -555,7 +557,28 @@ public class HortonworksSchemaRegistry extends AbstractControllerService impleme
             throw new IOException(message, e);
         }
 
+        if(containsForbiddenException(e)) {
+            throw new ForbiddenException("Access denied to the schema. " + message, e);
+        }
+
         throw new org.apache.nifi.schema.access.SchemaNotFoundException(message, e);
+    }
+
+    private boolean containsForbiddenException(Throwable t) {
+        if (t == null) {
+            return false;
+        }
+
+        if (t instanceof ForbiddenException) {
+            return true;
+        }
+
+        final Throwable cause = t.getCause();
+        if (cause == null) {
+            return false;
+        }
+
+        return containsForbiddenException(cause);
     }
 
     private boolean containsIOException(final Throwable t) {
