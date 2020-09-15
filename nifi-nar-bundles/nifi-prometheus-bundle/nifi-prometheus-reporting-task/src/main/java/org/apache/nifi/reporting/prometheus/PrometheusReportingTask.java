@@ -37,6 +37,7 @@ import org.apache.nifi.metrics.jvm.JmxJvmMetrics;
 import org.apache.nifi.prometheus.util.JvmMetricsRegistry;
 import org.apache.nifi.prometheus.util.NiFiMetricsRegistry;
 import org.apache.nifi.reporting.AbstractReportingTask;
+import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.reporting.ReportingContext;
 import org.apache.nifi.prometheus.util.PrometheusMetricsUtil;
 import org.apache.nifi.scheduling.SchedulingStrategy;
@@ -102,7 +103,7 @@ public class PrometheusReportingTask extends AbstractReportingTask {
     }
 
     @OnScheduled
-    public void onScheduled(final ConfigurationContext context) {
+    public void onScheduled(final ConfigurationContext context) throws InitializationException {
         SSLContextService sslContextService = context.getProperty(SSL_CONTEXT).asControllerService(SSLContextService.class);
         final String metricsEndpointPort = context.getProperty(PrometheusMetricsUtil.METRICS_ENDPOINT_PORT).getValue();
 
@@ -145,20 +146,24 @@ public class PrometheusReportingTask extends AbstractReportingTask {
             this.prometheusServer.setMetricsCollectors(metricsCollectors);
             getLogger().info("Started JETTY server");
         } catch (Exception e) {
-            getLogger().error("Failed to start Jetty server", e);
+            throw new InitializationException("Failed to start Jetty server", e);
         }
     }
 
     @OnStopped
     public void OnStopped() throws Exception {
-        Server server = this.prometheusServer.getServer();
-        server.stop();
+        if(this.prometheusServer != null && this.prometheusServer.getServer() != null) {
+            Server server = this.prometheusServer.getServer();
+            server.stop();
+        }
     }
 
     @OnShutdown
     public void onShutDown() throws Exception {
-        Server server = prometheusServer.getServer();
-        server.stop();
+        if(this.prometheusServer != null && this.prometheusServer.getServer() != null) {
+            Server server = this.prometheusServer.getServer();
+            server.stop();
+        }
     }
 
     @Override
