@@ -605,6 +605,9 @@
                         <exclude>src/test/resources/TestLookupRecord/lookup-array-output.json</exclude>
                         <exclude>src/test/resources/TestValidateRecord/int-maps-schema.avsc</exclude>
                         <exclude>src/test/resources/TestValidateRecord/int-maps-data.json</exclude>
+                        <exclude>src/test/resources/TestQueryRecord/schema/fields-value-name.avsc</exclude>
+                        <exclude>src/test/resources/TestQueryRecord/input/fields-value-name.json</exclude>
+                        <exclude>src/test/resources/TestQueryRecord/output/fields-value-name.json</exclude>
                     </excludes>
                 </configuration>
             </plugin>

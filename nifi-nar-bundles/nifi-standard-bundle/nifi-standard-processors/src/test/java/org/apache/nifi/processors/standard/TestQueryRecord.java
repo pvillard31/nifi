@@ -17,8 +17,11 @@
 package org.apache.nifi.processors.standard;
 
 import org.apache.nifi.controller.AbstractControllerService;
+import org.apache.nifi.json.JsonRecordSetWriter;
+import org.apache.nifi.json.JsonTreeReader;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.reporting.InitializationException;
+import org.apache.nifi.schema.access.SchemaAccessUtils;
 import org.apache.nifi.schema.access.SchemaNotFoundException;
 import org.apache.nifi.serialization.RecordSetWriter;
 import org.apache.nifi.serialization.RecordSetWriterFactory;
@@ -42,6 +45,8 @@ import org.junit.Test;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -508,6 +513,41 @@ public class TestQueryRecord {
         final Record output = written.get(0);
         assertEquals("John Doe", output.getValue("name"));
         assertEquals("Software Engineer", output.getValue("title"));
+    }
+
+    @Test
+    public void testRecordPathWithArrayWithJSONReaderWriter()  throws InitializationException, IOException {
+        TestRunner runner = getRunner();
+
+        final String inputSchemaText = new String(Files.readAllBytes(Paths.get("src/test/resources/TestQueryRecord/schema/fields-value-name.avsc")));
+        final String outputSchemaText = new String(Files.readAllBytes(Paths.get("src/test/resources/TestQueryRecord/schema/fields-value-name.avsc")));
+
+        final JsonTreeReader jsonReader = new JsonTreeReader();
+        runner.addControllerService("reader", jsonReader);
+        runner.setProperty(jsonReader, SchemaAccessUtils.SCHEMA_ACCESS_STRATEGY, SchemaAccessUtils.SCHEMA_TEXT_PROPERTY);
+        runner.setProperty(jsonReader, SchemaAccessUtils.SCHEMA_TEXT, inputSchemaText);
+        runner.enableControllerService(jsonReader);
+
+        final JsonRecordSetWriter jsonWriter = new JsonRecordSetWriter();
+        runner.addControllerService("writer", jsonWriter);
+        runner.setProperty(jsonWriter, SchemaAccessUtils.SCHEMA_ACCESS_STRATEGY, SchemaAccessUtils.SCHEMA_TEXT_PROPERTY);
+        runner.setProperty(jsonWriter, SchemaAccessUtils.SCHEMA_TEXT, outputSchemaText);
+        runner.enableControllerService(jsonWriter);
+
+
+        runner.setProperty(QueryRecord.RECORD_READER_FACTORY, "reader");
+        runner.setProperty(QueryRecord.RECORD_WRITER_FACTORY, "writer");
+
+        runner.enqueue(Paths.get("src/test/resources/TestQueryRecord/input/fields-value-name.json"));
+        runner.setProperty(REL_NAME,
+                "SELECT *" +
+                        "    FROM FLOWFILE" +
+                        "    WHERE RPATH(field, '/country[/language = ''French'']') = 'France'");
+
+        runner.run();
+        runner.assertAllFlowFilesTransferred(REL_NAME, 1);
+        final String expectedOutput = new String(Files.readAllBytes(Paths.get("src/test/resources/TestQueryRecord/output/fields-value-name.json")));
+        runner.getFlowFilesForRelationship(REL_NAME).get(0).assertContentEquals(expectedOutput);
     }
 
 
