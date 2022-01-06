@@ -145,6 +145,23 @@ public class HortonworksSchemaRegistry extends AbstractControllerService impleme
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
 
+    static final PropertyDescriptor BASIC_AUTH_USERNAME = new PropertyDescriptor.Builder()
+        .name("basic-auth-username")
+        .displayName("Basic Authentication Username")
+        .description("The username to use for basic authentication when the Schema Registry is behind a proxy such as Apache Knox.")
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .dependsOn(SSL_CONTEXT_SERVICE)
+        .build();
+
+    static final PropertyDescriptor BASIC_AUTH_PASSWORD = new PropertyDescriptor.Builder()
+        .name("basic-auth-password")
+        .displayName("Basic Authentication Password")
+        .description("The password to use for basic authentication when the Schema Registry is behind a proxy such as Apache Knox.")
+        .sensitive(true)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .dependsOn(SSL_CONTEXT_SERVICE)
+        .build();
+
     private volatile boolean usingKerberosWithPassword = false;
     private volatile SchemaRegistryClient schemaRegistryClient;
     private volatile boolean initialized;
@@ -181,6 +198,15 @@ public class HortonworksSchemaRegistry extends AbstractControllerService impleme
                     .subject(KERBEROS_PRINCIPAL.getDisplayName())
                     .valid(false)
                     .explanation("kerberos principal is required when specifying a kerberos password")
+                    .build());
+        }
+
+        if ((validationContext.getProperty(BASIC_AUTH_USERNAME).isSet() || validationContext.getProperty(BASIC_AUTH_PASSWORD).isSet())
+                && !validationContext.getProperty(SSL_CONTEXT_SERVICE).isSet()) {
+            results.add(new ValidationResult.Builder()
+                    .subject(BASIC_AUTH_USERNAME.getDisplayName())
+                    .valid(false)
+                    .explanation("SSL Context Service must be set when using basic authentication")
                     .build());
         }
 
@@ -228,6 +254,14 @@ public class HortonworksSchemaRegistry extends AbstractControllerService impleme
             schemaRegistryConfig.put(SchemaRegistryClientWithKerberosPassword.SCHEMA_REGISTRY_CLIENT_KERBEROS_PASSWORD, kerberosPassword);
             schemaRegistryConfig.put(SchemaRegistryClientWithKerberosPassword.SCHEMA_REGISTRY_CLIENT_NIFI_COMP_LOGGER, getLogger());
             usingKerberosWithPassword = true;
+        }
+
+        if (context.getProperty(BASIC_AUTH_USERNAME).isSet()) {
+            schemaRegistryConfig.put(SchemaRegistryClient.Configuration.AUTH_USERNAME.name(), context.getProperty(BASIC_AUTH_USERNAME).getValue());
+        }
+
+        if (context.getProperty(BASIC_AUTH_PASSWORD).isSet()) {
+            schemaRegistryConfig.put(SchemaRegistryClient.Configuration.AUTH_PASSWORD.name(), context.getProperty(BASIC_AUTH_PASSWORD).getValue());
         }
     }
 
@@ -283,6 +317,8 @@ public class HortonworksSchemaRegistry extends AbstractControllerService impleme
         properties.add(KERBEROS_CREDENTIALS_SERVICE);
         properties.add(KERBEROS_PRINCIPAL);
         properties.add(KERBEROS_PASSWORD);
+        properties.add(BASIC_AUTH_USERNAME);
+        properties.add(BASIC_AUTH_PASSWORD);
         return properties;
     }
 
