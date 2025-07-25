@@ -279,6 +279,41 @@ public class ParameterContextIT extends NiFiSystemIT {
     }
 
     @Test
+    @Timeout(30)
+    public void testParameterProviderRemovalUpdatesContext() throws NiFiClientException, IOException, InterruptedException {
+        final ParameterProviderEntity parameterProvider = createParameterProvider("PropertiesParameterProvider");
+
+        final Map<String, String> initialProperties = new HashMap<>();
+        initialProperties.put("parameters", "a=1\nb=2");
+        final ParameterProviderEntity updatedProvider = updateParameterProviderProperties(parameterProvider, initialProperties);
+
+        final String parameterGroupName = "Parameters";
+        final String parameterContextName = getTestName();
+        final ParameterContextEntity contextEntity = createParameterContextEntity(parameterContextName, null, Collections.emptySet(),
+                Collections.emptyList(), updatedProvider, parameterGroupName);
+        final ParameterContextEntity createdContextEntity = getNifiClient().getParamContextClient().createParamContext(contextEntity);
+
+        final ParameterGroupConfigurationEntity groupConfiguration = new ParameterGroupConfigurationEntity();
+        groupConfiguration.setSynchronized(true);
+        groupConfiguration.setGroupName(parameterGroupName);
+        groupConfiguration.setParameterContextName(parameterContextName);
+
+        fetchAndWaitForAppliedParameters(updatedProvider, Collections.singletonList(groupConfiguration));
+
+        ParameterContextEntity fetchedContext = getNifiClient().getParamContextClient().getParamContext(createdContextEntity.getId(), false);
+        assertEquals(Set.of("a", "b"), getParameterNames(fetchedContext));
+
+        final Map<String, String> removedProperties = new HashMap<>();
+        removedProperties.put("parameters", "a=1");
+        final ParameterProviderEntity removedProvider = updateParameterProviderProperties(updatedProvider, removedProperties);
+
+        fetchAndWaitForAppliedParameters(removedProvider, Collections.singletonList(groupConfiguration));
+
+        final ParameterContextEntity updatedContext = getNifiClient().getParamContextClient().getParamContext(createdContextEntity.getId(), false);
+        assertEquals(Set.of("a"), getParameterNames(updatedContext));
+    }
+
+    @Test
     public void testParametersReferencingEL() throws NiFiClientException, IOException, InterruptedException {
         final ProcessorEntity generate = getClientUtil().createProcessor("GenerateFlowFile");
         getClientUtil().updateProcessorProperties(generate, Collections.singletonMap("a", "1"));
@@ -1103,6 +1138,12 @@ public class ParameterContextIT extends NiFiSystemIT {
 
     private void waitForStoppedProcessor(final String processorId) throws InterruptedException, IOException, NiFiClientException {
         getClientUtil().waitForStoppedProcessor(processorId);
+    }
+
+    private Set<String> getParameterNames(final ParameterContextEntity context) {
+        return context.getComponent().getParameters().stream()
+                .map(entity -> entity.getParameter().getName())
+                .collect(Collectors.toSet());
     }
 
 
