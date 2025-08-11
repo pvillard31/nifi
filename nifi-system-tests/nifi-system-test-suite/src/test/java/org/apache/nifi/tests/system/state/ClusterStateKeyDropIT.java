@@ -51,8 +51,28 @@ public class ClusterStateKeyDropIT extends AbstractStateKeyDropIT {
         getClientUtil().updateProcessorProperties(generate, Collections.singletonMap("State Scope", "CLUSTER"));
         runProcessorOnce(generate);
 
+        // GenerateFlowFile has both local and cluster state, so dropping state should
+        // fail
         assertThrows(NiFiClientException.class, () -> {
             dropProcessorState(generate.getId(), Collections.emptyMap());
+        });
+    }
+
+    @Test
+    public void testCannotDropStateKeyIfFlagNotTrue() throws NiFiClientException, IOException, InterruptedException {
+        final ProcessorEntity multi = getClientUtil().createProcessor("MultiKeyStateNotDroppable");
+        runProcessorOnce(multi);
+
+        final Map<String, String> currentState = getProcessorState(multi.getId(), Scope.CLUSTER);
+        assertEquals(Map.of("a", "1", "b", "1", "c", "1"), currentState);
+
+        // trying to remove key a
+        final Map<String, String> newState = Map.of("b", "1", "c", "1");
+
+        // MultiKeyStateNotDroppable processor has state but has dropStateKeySupported =
+        // false so it should also fail
+        assertThrows(NiFiClientException.class, () -> {
+            dropProcessorState(multi.getId(), newState);
         });
     }
 
