@@ -6085,14 +6085,13 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
 
     private Authorizable getAuthorizable(final Connectable connectable) {
-        switch (connectable.getConnectableType()) {
-            case REMOTE_INPUT_PORT:
-            case REMOTE_OUTPUT_PORT:
+        return switch (connectable.getConnectableType()) {
+            case REMOTE_INPUT_PORT, REMOTE_OUTPUT_PORT -> {
                 final String rpgId = ((RemoteGroupPort) connectable).getRemoteProcessGroup().getIdentifier();
-                return authorizableLookup.getRemoteProcessGroup(rpgId);
-            default:
-                return authorizableLookup.getLocalConnectable(connectable.getIdentifier());
-        }
+                yield authorizableLookup.getRemoteProcessGroup(rpgId);
+            }
+            default -> authorizableLookup.getLocalConnectable(connectable.getIdentifier());
+        };
     }
 
     private Authorizable getAuthorizable(final String componentTypeName, final InstantiatedVersionedComponent versionedComponent) {

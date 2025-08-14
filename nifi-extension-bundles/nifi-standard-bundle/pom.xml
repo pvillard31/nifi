@@ -35,7 +35,7 @@
     </modules>
     <properties>
         <org.apache.sshd.version>2.15.0</org.apache.sshd.version>
-        <tika.version>3.2.1</tika.version>
+        <tika.version>3.2.2</tika.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -159,7 +159,7 @@
             <dependency>
                 <groupId>com.fluenda</groupId>
                 <artifactId>parcefone</artifactId>
-                <version>3.0.0</version>
+                <version>3.1.0</version>
             </dependency>
             <dependency>
                 <groupId>com.github.wnameless.json</groupId>
