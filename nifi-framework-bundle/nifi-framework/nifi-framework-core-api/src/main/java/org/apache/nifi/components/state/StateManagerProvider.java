@@ -70,4 +70,11 @@ public interface StateManagerProvider {
      * state, even when components request a clustered provider
      */
     void disableClusterProvider();
+
+    /**
+     * Returns whether the Cluster State Provider is enabled.
+     *
+     * @return true if the Cluster State Provider is enabled, false otherwise
+     */
+    boolean isClusterProviderEnabled();
 }

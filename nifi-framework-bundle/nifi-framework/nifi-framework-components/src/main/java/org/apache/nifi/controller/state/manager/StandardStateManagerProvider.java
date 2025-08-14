@@ -626,4 +626,9 @@ public class StandardStateManagerProvider implements StateManagerProvider {
             }
         }
     }
+
+    @Override
+    public boolean isClusterProviderEnabled() {
+        return nifiProperties.isClustered() && clusterStateProvider != null && clusterStateProvider.isEnabled();
+    }
 }

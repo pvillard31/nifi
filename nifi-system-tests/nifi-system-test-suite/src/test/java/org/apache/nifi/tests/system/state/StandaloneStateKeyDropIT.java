@@ -18,6 +18,7 @@ package org.apache.nifi.tests.system.state;
 
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.toolkit.client.NiFiClientException;
+import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class StandaloneStateKeyDropIT extends AbstractStateKeyDropIT {
 
     @Test
-    public void testCannotDropStateKeyOnStandalone() throws NiFiClientException, IOException, InterruptedException {
+    public void testDeleteStateKeyOnStandalone() throws NiFiClientException, IOException, InterruptedException {
         final ProcessorEntity generate = getClientUtil().createProcessor("GenerateFlowFile");
         getClientUtil().updateProcessorProperties(generate, Collections.singletonMap("State Scope", "CLUSTER"));
         final ProcessorEntity terminate = getClientUtil().createProcessor("TerminateFlowFile");
@@ -49,16 +50,64 @@ public class StandaloneStateKeyDropIT extends AbstractStateKeyDropIT {
         final Map<String, String> localState = getProcessorState(generate.getId(), Scope.LOCAL);
         assertEquals("1", localState.get("count"));
 
-        // cannot drop specific keys with LOCAL state
-        assertThrows(NiFiClientException.class, () -> {
-            dropProcessorState(generate.getId(), Collections.emptyMap());
-        });
+        // drop specific keys with LOCAL state
+        ComponentStateEntity newState = dropProcessorState(generate.getId(), Collections.emptyMap());
+        assertTrue(newState.getComponentState().getClusterState() == null);
+        assertTrue(newState.getComponentState().getLocalState().getState().isEmpty());
 
         final Map<String, String> after = getProcessorState(generate.getId(), Scope.LOCAL);
-        assertEquals("1", after.get("count"));
+        assertTrue(after.isEmpty());
+
+        runProcessorOnce(generate);
 
         // can drop full state
         dropProcessorState(generate.getId(), null);
         assertTrue(getProcessorState(generate.getId(), Scope.LOCAL).isEmpty());
+    }
+
+    @Test
+    public void testCannotDropStateKeyIfFlagNotTrue() throws NiFiClientException, IOException, InterruptedException {
+        final ProcessorEntity multi = getClientUtil().createProcessor("MultiKeyStateNotDroppable");
+        runProcessorOnce(multi);
+
+        final Map<String, String> currentState = getProcessorState(multi.getId(), Scope.LOCAL);
+        assertEquals(Map.of("a", "1", "b", "1", "c", "1"), currentState);
+
+        // trying to remove key a
+        final Map<String, String> newState = Map.of("b", "1", "c", "1");
+
+        // MultiKeyStateNotDroppable processor has state but has dropStateKeySupported =
+        // false so it should also fail
+        assertThrows(NiFiClientException.class, () -> {
+            dropProcessorState(multi.getId(), newState);
+        });
+    }
+
+    @Test
+    public void testCannotDropStateKeyWithMismatchedState() throws NiFiClientException, IOException, InterruptedException {
+        final ProcessorEntity multi = getClientUtil().createProcessor("MultiKeyState");
+        runProcessorOnce(multi);
+
+        final Map<String, String> currentState = getProcessorState(multi.getId(), Scope.LOCAL);
+        assertEquals(Map.of("a", "1", "b", "1", "c", "1"), currentState);
+
+        // trying to remove key "a" but with wrong value for "b"
+        assertThrows(NiFiClientException.class, () -> {
+            dropProcessorState(multi.getId(), Map.of("b", "2", "c", "1"));
+        });
+    }
+
+    @Test
+    public void testCannotDropMultipleStateKeys() throws NiFiClientException, IOException, InterruptedException {
+        final ProcessorEntity multi = getClientUtil().createProcessor("MultiKeyState");
+        runProcessorOnce(multi);
+
+        final Map<String, String> currentState = getProcessorState(multi.getId(), Scope.LOCAL);
+        assertEquals(Map.of("a", "1", "b", "1", "c", "1"), currentState);
+
+        // trying to remove two keys
+        assertThrows(NiFiClientException.class, () -> {
+            dropProcessorState(multi.getId(), Map.of("c", "1"));
+        });
     }
 }

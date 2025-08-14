@@ -111,6 +111,11 @@ public class TestStandardControllerServiceProvider {
         @Override
         public void onComponentRemoved(final String componentId) {
         }
+
+        @Override
+        public boolean isClusterProviderEnabled() {
+            return false;
+        }
     };
 
     private static NiFiProperties niFiProperties;

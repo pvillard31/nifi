@@ -65,6 +65,24 @@ public class StandardComponentStateDAO implements ComponentStateDAO {
                 // clear both state's at the same time
                 manager.clear(Scope.CLUSTER);
                 manager.clear(Scope.LOCAL);
+            } else if (manager.getState(Scope.LOCAL) != null && !manager.getState(Scope.LOCAL).toMap().isEmpty() && !stateManagerProvider.isClusterProviderEnabled()) {
+                // we are in standalone mode, all state is local
+                if (manager.isStateKeyDropSupported()) {
+                    final Map<String, String> newState = new HashMap<>();
+                    componentStateDTO.getClusterState().getState().forEach(stateEntryDTO -> {
+                        newState.put(stateEntryDTO.getKey(), stateEntryDTO.getValue());
+                    });
+
+                    final Map<String, String> currentState = manager.getState(Scope.LOCAL).toMap();
+
+                    if (hasExactlyOneKeyRemoved(currentState, newState)) {
+                        manager.setState(newState, Scope.LOCAL);
+                    } else {
+                        throw new IllegalStateException(String.format("Unable to remove key in the state of the specified component %s. Only one key can be removed.", componentId));
+                    }
+                } else {
+                    throw new IllegalStateException(String.format("Removing specific keys for component %s with local state is not supported.", componentId));
+                }
             } else if (manager.getState(Scope.LOCAL) != null && !manager.getState(Scope.LOCAL).toMap().isEmpty()) {
                 throw new IllegalStateException(String.format("Removing specific keys for component %s with local state is not supported.", componentId));
             } else if (componentStateDTO.getClusterState() != null && !componentStateDTO.getClusterState().getState().isEmpty()) {
