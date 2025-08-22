@@ -35,6 +35,7 @@
         <module>nifi-registry-docker-maven</module>
     </modules>
     <properties>
+        <jetty.version>12.0.25</jetty.version>
         <spring.boot.version>3.5.4</spring.boot.version>
         <flyway.version>11.11.1</flyway.version>
         <flyway.tests.version>10.0.0</flyway.tests.version>
