@@ -43,7 +43,7 @@ import java.util.List;
  * {@link #getConnectionFactory()} method.
  */
 @Tags({"jms", "messaging", "integration", "queue", "topic", "publish", "subscribe"})
-@CapabilityDescription("Provides a generic service to create vendor specific javax.jms.ConnectionFactory implementations. "
+@CapabilityDescription("Provides a generic service to create vendor specific jakarta.jms.ConnectionFactory implementations. "
         + "The Connection Factory can be served once this service is configured successfully.")
 @DynamicProperty(name = "The name of a Connection Factory configuration property.", value = "The value of a given Connection Factory configuration property.",
         description = "The properties that are set following Java Beans convention where a property name is derived from the 'set*' method of the vendor "

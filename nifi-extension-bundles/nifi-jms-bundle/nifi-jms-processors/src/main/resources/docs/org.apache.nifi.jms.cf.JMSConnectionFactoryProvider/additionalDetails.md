@@ -18,9 +18,9 @@
 ## Description
 
 This controller service serves as a general factory service to serving vendor specific instances of the
-_javax.jms.ConnectionFactory_. It does so by allowing user to configure vendor specific properties as well as point to
+_jakarta.jms.ConnectionFactory_. It does so by allowing user to configure vendor specific properties as well as point to
 the location of the vendor provided JMS client libraries so the correct implementation of the
-_javax.jms.ConnectionFactory_ can be found, loaded, instantiated and served to the dependent processors (see PublishJMS,
+_jakarta.jms.ConnectionFactory_ can be found, loaded, instantiated and served to the dependent processors (see PublishJMS,
 ConsumeJMS).
 
 All JMS vendors and _ConnectionFactory_ implementations are supported as long as the configuration values can be set

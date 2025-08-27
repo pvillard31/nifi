@@ -285,7 +285,7 @@ public class ConsumeJMS extends AbstractJMSProcessor<JMSConsumer> {
     @OnScheduled
     public void onSchedule(ProcessContext context) {
         if (context.getMaxConcurrentTasks() > 1 && isDurableSubscriber(context) && !isShared(context)) {
-            throw new ProcessException("Durable non shared subscriptions cannot work on multiple threads. Check javax/jms/Session#createDurableConsumer API doc.");
+            throw new ProcessException("Durable non shared subscriptions cannot work on multiple threads. Check jakarta/jms/Session#createDurableConsumer API doc.");
         }
     }
 

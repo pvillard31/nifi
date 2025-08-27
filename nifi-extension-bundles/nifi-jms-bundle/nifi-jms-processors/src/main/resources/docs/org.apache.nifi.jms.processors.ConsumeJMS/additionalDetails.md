@@ -30,11 +30,11 @@ At the time of writing this document it only defines the essential configuration
 cases. Other properties will be defined later as this component progresses. Configuring ConsumeJMS:
 
 1. **User Name** - \[OPTIONAL\] User Name used for authentication and authorization when this processor obtains
-   _javax.jms.Connection_ from the pre-configured _javax.jms.ConnectionFactory_ (see below).
+   _jakarta.jms.Connection_ from the pre-configured _jakarta.jms.ConnectionFactory_ (see below).
 2. **Password** - \[OPTIONAL\] Password used in conjunction with **User Name**.
-3. **Destination Name** - \[REQUIRED\] the name of the _javax.jms.Destination_. Usually provided by administrator (
+3. **Destination Name** - \[REQUIRED\] the name of the _jakarta.jms.Destination_. Usually provided by administrator (
    e.g., 'topic://myTopic').
-4. **Destination Type** - \[REQUIRED\] the type of the _javax.jms.Destination_. Could be one of 'QUEUE' or 'TOPIC'
+4. **Destination Type** - \[REQUIRED\] the type of the _jakarta.jms.Destination_. Could be one of 'QUEUE' or 'TOPIC'
    Usually provided by the administrator. Defaults to 'QUEUE'.
 
 ### Connection Factory Configuration

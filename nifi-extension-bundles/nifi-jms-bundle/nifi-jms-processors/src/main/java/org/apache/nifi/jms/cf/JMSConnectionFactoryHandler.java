@@ -34,7 +34,7 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.ssl.SSLContextService;
 
 /**
- * Handler class to create a JMS Connection Factory by instantiating the vendor specific javax.jms.ConnectionFactory
+ * Handler class to create a JMS Connection Factory by instantiating the vendor specific jakarta.jms.ConnectionFactory
  * implementation class and configuring the Connection Factory object directly.
  * The handler can be used from controller services and processors as well.
  */

@@ -139,8 +139,8 @@ public class StandardControllerServiceInvocationHandler implements ControllerSer
 
         // The proxy that is to be returned needs to ensure that it implements all interfaces that are defined by the
         // object. We cannot simply implement the return that that is defined, because the code that receives the object
-        // may perform further inspection. For example, consider that a javax.jms.Message is returned. If this method proxies
-        // only that method, but the object itself is a javax.jms.BytesMessage, then code such as the following will result in `isBytes == false`
+        // may perform further inspection. For example, consider that a jakarta.jms.Message is returned. If this method proxies
+        // only that method, but the object itself is a jakarta.jms.BytesMessage, then code such as the following will result in `isBytes == false`
         // when it should be `true`:
         final List<Class<?>> interfaces = ClassUtils.getAllInterfaces(bareObject.getClass());
         if (interfaces == null || interfaces.isEmpty()) {
