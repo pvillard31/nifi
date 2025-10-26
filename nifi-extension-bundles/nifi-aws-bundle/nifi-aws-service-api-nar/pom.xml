@@ -77,6 +77,12 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
+            <groupId>software.amazon.awssdk.crt</groupId>
+            <artifactId>aws-crt</artifactId>
+            <version>${awscrt.version}</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
             <groupId>software.amazon.encryption.s3</groupId>
             <artifactId>amazon-s3-encryption-client-java</artifactId>
             <version>${software.amazon.encryption.s3.version}</version>

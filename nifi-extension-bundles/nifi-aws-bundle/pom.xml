@@ -29,6 +29,7 @@
     <properties>
         <guava.version>33.5.0-jre</guava.version>
         <protobuf.version>4.33.0</protobuf.version>
+        <awscrt.version>0.38.9</awscrt.version>
     </properties>
 
     <modules>
@@ -85,6 +86,11 @@
                 <artifactId>s3</artifactId>
                 <version>${software.amazon.awssdk.version}</version>
                 <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk.crt</groupId>
+                <artifactId>aws-crt</artifactId>
+                <version>${awscrt.version}</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.encryption.s3</groupId>

@@ -188,15 +188,7 @@ public abstract class AbstractS3Processor extends AbstractAwsSyncProcessor<S3Cli
         }
     }
 
-    @Override
-    protected S3ClientBuilderWrapper createClientBuilder(ProcessContext context) {
-        final AmazonS3EncryptionService encryptionService = context.getProperty(ENCRYPTION_SERVICE).asControllerService(AmazonS3EncryptionService.class);
-
-        final S3ClientBuilderWrapper clientBuilder = Optional.ofNullable(encryptionService)
-                .map(AmazonS3EncryptionService::createEncryptionClientBuilder)
-                .map(S3ClientBuilderWrapper::new)
-                .orElse(new S3ClientBuilderWrapper(S3Client.builder()));
-
+    protected S3Configuration buildS3Configuration(final ProcessContext context) {
         final S3Configuration.Builder configurationBuilder = S3Configuration.builder();
 
         final Boolean useChunkedEncoding = context.getProperty(USE_CHUNKED_ENCODING).asBoolean();
@@ -210,7 +202,19 @@ public abstract class AbstractS3Processor extends AbstractAwsSyncProcessor<S3Cli
             configurationBuilder.pathStyleAccessEnabled(true);
         }
 
-        clientBuilder.serviceConfiguration(configurationBuilder.build());
+        return configurationBuilder.build();
+    }
+
+    @Override
+    protected S3ClientBuilderWrapper createClientBuilder(final ProcessContext context) {
+        final AmazonS3EncryptionService encryptionService = context.getProperty(ENCRYPTION_SERVICE).asControllerService(AmazonS3EncryptionService.class);
+
+        final S3ClientBuilderWrapper clientBuilder = Optional.ofNullable(encryptionService)
+                .map(AmazonS3EncryptionService::createEncryptionClientBuilder)
+                .map(S3ClientBuilderWrapper::new)
+                .orElse(new S3ClientBuilderWrapper(S3Client.builder()));
+
+        clientBuilder.serviceConfiguration(buildS3Configuration(context));
 
         return clientBuilder;
     }
