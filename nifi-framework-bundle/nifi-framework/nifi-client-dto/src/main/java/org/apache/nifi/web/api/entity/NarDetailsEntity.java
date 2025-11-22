@@ -36,6 +36,7 @@ public class NarDetailsEntity extends Entity {
     private Set<DocumentedTypeDTO> parameterProviderTypes;
     private Set<DocumentedTypeDTO> flowRegistryClientTypes;
     private Set<DocumentedTypeDTO> flowAnalysisRuleTypes;
+    private Set<DocumentedTypeDTO> extensionRegistryClientTypes;
 
     @Schema(description = "The NAR summary")
     public NarSummaryDTO getNarSummary() {
@@ -100,12 +101,21 @@ public class NarDetailsEntity extends Entity {
         this.flowRegistryClientTypes = flowRegistryClientTypes;
     }
 
+    @Schema(description = "The FlowAnalysisRule types contained in the NAR")
     public Set<DocumentedTypeDTO> getFlowAnalysisRuleTypes() {
         return flowAnalysisRuleTypes;
     }
 
-    @Schema(description = "The FlowAnalysisRule types contained in the NAR")
     public void setFlowAnalysisRuleTypes(final Set<DocumentedTypeDTO> flowAnalysisRuleTypes) {
         this.flowAnalysisRuleTypes = flowAnalysisRuleTypes;
+    }
+
+    @Schema(description = "The Extension Registry Client types contained in the NAR")
+    public Set<DocumentedTypeDTO> getExtensionRegistryClientTypes() {
+        return extensionRegistryClientTypes;
+    }
+
+    public void setExtensionRegistryClientTypes(Set<DocumentedTypeDTO> extensionRegistryClientTypes) {
+        this.extensionRegistryClientTypes = extensionRegistryClientTypes;
     }
 }

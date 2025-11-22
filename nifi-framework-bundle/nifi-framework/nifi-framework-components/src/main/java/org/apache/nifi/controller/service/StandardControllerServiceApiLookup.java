@@ -62,7 +62,7 @@ public class StandardControllerServiceApiLookup implements ControllerServiceApiL
 
             final ControllerServiceAPI serviceApi = new ControllerServiceAPI();
             serviceApi.setType(requiredServiceApiClass.getCanonicalName());
-            serviceApi.setBundle(new Bundle(serviceApiBundleCoordinate.getGroup(), serviceApiBundleCoordinate.getId(), serviceApiBundleCoordinate.getVersion()));
+            serviceApi.setBundle(new Bundle(serviceApiBundleCoordinate.getGroup(), serviceApiBundleCoordinate.getId(), serviceApiBundleCoordinate.getVersion(), false));
             serviceApis.put(descriptor.getName(), serviceApi);
         }
 

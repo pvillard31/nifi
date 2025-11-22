@@ -20,6 +20,7 @@ import org.apache.nifi.c2.protocol.component.api.ComponentManifest;
 import org.apache.nifi.c2.protocol.component.api.ControllerServiceDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowRegistryClientDefinition;
+import org.apache.nifi.c2.protocol.component.api.ExtensionRegistryClientDefinition;
 import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
 import org.apache.nifi.c2.protocol.component.api.ProcessorDefinition;
 import org.apache.nifi.c2.protocol.component.api.ReportingTaskDefinition;
@@ -64,6 +65,12 @@ public interface ComponentManifestBuilder {
      * @return the builder
      */
     ComponentManifestBuilder addFlowRegistryClient(FlowRegistryClientDefinition flowRegistryClientDefinition);
+
+    /**
+     * @param extensionRegistryClientDefinition an extension registry client definition to add
+     * @return the builder
+     */
+    ComponentManifestBuilder addExtensionRegistryClient(ExtensionRegistryClientDefinition extensionRegistryClientDefinition);
 
     /**
      * @return a component manifest containing all the added definitions

@@ -289,7 +289,7 @@ describe('Canvas', () => {
                             bundle: {
                                 group: 'org.apache.nifi',
                                 artifact: 'nifi-standard-nar',
-                                version: '2.2.0-SNAPSHOT'
+                                version: '2.7.0-SNAPSHOT'
                             },
                             properties: {
                                 'Request Content-Encoding': 'DISABLED',
@@ -621,7 +621,7 @@ describe('Canvas', () => {
                             bundle: {
                                 group: 'org.apache.nifi',
                                 artifact: 'nifi-stateful-analysis-nar',
-                                version: '2.2.0-SNAPSHOT'
+                                version: '2.7.0-SNAPSHOT'
                             },
                             properties: {
                                 'Value to track': null,
@@ -682,7 +682,7 @@ describe('Canvas', () => {
                             bundle: {
                                 group: 'org.apache.nifi',
                                 artifact: 'nifi-standard-nar',
-                                version: '2.2.0-SNAPSHOT'
+                                version: '2.7.0-SNAPSHOT'
                             },
                             properties: {
                                 'Include Zero Record FlowFiles': 'true',
@@ -909,7 +909,7 @@ describe('Canvas', () => {
                         bundle: {
                             artifact: 'nifi-standard-nar',
                             group: 'org.apache.nifi',
-                            version: '2.2.0-SNAPSHOT'
+                            version: '2.7.0-SNAPSHOT'
                         },
                         comments: '',
                         componentType: 'PROCESSOR',
@@ -1231,7 +1231,7 @@ describe('Canvas', () => {
                         bundle: {
                             artifact: 'nifi-stateful-analysis-nar',
                             group: 'org.apache.nifi',
-                            version: '2.2.0-SNAPSHOT'
+                            version: '2.7.0-SNAPSHOT'
                         },
                         comments: '',
                         componentType: 'PROCESSOR',
@@ -1287,7 +1287,7 @@ describe('Canvas', () => {
                         bundle: {
                             artifact: 'nifi-standard-nar',
                             group: 'org.apache.nifi',
-                            version: '2.2.0-SNAPSHOT'
+                            version: '2.7.0-SNAPSHOT'
                         },
                         comments: '',
                         componentType: 'PROCESSOR',

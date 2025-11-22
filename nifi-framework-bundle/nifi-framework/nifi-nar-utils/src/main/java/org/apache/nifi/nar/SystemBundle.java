@@ -58,6 +58,6 @@ public final class SystemBundle {
                 .coordinate(SYSTEM_BUNDLE_COORDINATE)
                 .build();
 
-        return new Bundle(systemBundleDetails, systemClassLoader);
+        return new Bundle(systemBundleDetails, systemClassLoader, false);
     }
 }

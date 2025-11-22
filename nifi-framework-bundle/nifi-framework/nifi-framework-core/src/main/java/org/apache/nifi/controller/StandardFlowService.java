@@ -196,6 +196,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
         }
         this.revisionManager = revisionManager;
         this.narManager = narManager;
+        this.controller.setNarManager(narManager);
         this.assetSynchronizer = assetSynchronizer;
         this.authorizer = authorizer;
 
@@ -231,6 +232,11 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             this.configuredForClustering = false;
             this.senderListener = null;
         }
+    }
+
+    @Override
+    public NarManager getNARManager() {
+        return narManager;
     }
 
     @Override

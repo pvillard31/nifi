@@ -163,9 +163,15 @@ import org.apache.nifi.groups.StatelessGroupScheduledState;
 import org.apache.nifi.nar.ExtensionDefinition;
 import org.apache.nifi.nar.ExtensionDiscoveringManager;
 import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.nar.ExtensionRegistriesManager;
 import org.apache.nifi.nar.NarCloseable;
+import org.apache.nifi.nar.NarInstallRequest;
+import org.apache.nifi.nar.NarInstallRequestFromRegistry;
+import org.apache.nifi.nar.NarManager;
+import org.apache.nifi.nar.NarSource;
 import org.apache.nifi.nar.NarThreadContextClassLoader;
 import org.apache.nifi.nar.PythonBundle;
+import org.apache.nifi.nar.StandardExtensionRegistriesManager;
 import org.apache.nifi.parameter.ParameterContextManager;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.parameter.StandardParameterContextManager;
@@ -189,6 +195,7 @@ import org.apache.nifi.python.PythonProcessConfig;
 import org.apache.nifi.registry.flow.mapping.InstantiatedVersionedProcessGroup;
 import org.apache.nifi.registry.flow.mapping.NiFiRegistryFlowMapper;
 import org.apache.nifi.registry.flow.mapping.VersionedComponentStateLookup;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.remote.HttpRemoteSiteListener;
 import org.apache.nifi.remote.RemoteGroupPort;
 import org.apache.nifi.remote.RemoteResourceManager;
@@ -216,6 +223,9 @@ import org.apache.nifi.web.api.dto.status.StatusHistoryDTO;
 import org.apache.nifi.web.revision.RevisionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.management.NotificationEmitter;
+import javax.net.ssl.SSLContext;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -249,8 +259,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import javax.management.NotificationEmitter;
-import javax.net.ssl.SSLContext;
 
 import static java.util.Objects.requireNonNull;
 
@@ -266,6 +274,7 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
 
     public static final String GRACEFUL_SHUTDOWN_PERIOD = "nifi.flowcontroller.graceful.shutdown.seconds";
     public static final long DEFAULT_GRACEFUL_SHUTDOWN_SECONDS = 10;
+    private static final int EXTENSION_REGISTRY_DISCOVERY_VALIDATION_WAIT_MILLIS = 5000;
 
     private static final String ZOOKEEPER_STATE_PROVIDER_SERVER_CLASS = "org.apache.nifi.controller.state.providers.zookeeper.server.ZooKeeperStateProviderServer";
 
@@ -361,6 +370,9 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
     private final HeartbeatMonitor heartbeatMonitor;
     private final PythonBridge pythonBridge;
     private final org.apache.nifi.bundle.Bundle pythonBundle;
+
+    private final ExtensionRegistriesManager extensionRegistriesManager;
+    private NarManager narManager;
 
     // guarded by FlowController lock
     /**
@@ -610,6 +622,15 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
         if (flowAnalyzer != null) {
             flowAnalyzer.initialize(controllerServiceProvider);
         }
+
+        this.extensionRegistriesManager = new StandardExtensionRegistriesManager(flowManager);
+        extensionManager.setExtensionRegistriesManager(extensionRegistriesManager);
+
+        final Runnable discoverRemoteExtensions = () -> extensionRegistriesManager.discoverExtensions();
+        // Discover remote extensions immediately at startup to surface remote components in type listings,
+        // then refresh periodically.
+        discoverRemoteExtensions.run();
+        timerDrivenEngineRef.get().scheduleWithFixedDelay(discoverRemoteExtensions, 10, 10, TimeUnit.MINUTES);
 
         final CronSchedulingAgent cronSchedulingAgent = new CronSchedulingAgent(this, timerDrivenEngineRef.get(), repositoryContextFactory);
         final TimerDrivenSchedulingAgent timerDrivenAgent = new TimerDrivenSchedulingAgent(this, timerDrivenEngineRef.get(), repositoryContextFactory, this.nifiProperties);
@@ -1212,6 +1233,7 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
             LOG.info("Performed initial validation of all components in {} milliseconds", millis);
 
             scheduleBackgroundFlowAnalysis(rootProcessGroupSupplier);
+            triggerExtensionRegistryDiscoveryAfterInitialization();
             // Trigger component validation to occur every 5 seconds.
             validationThreadPool.scheduleWithFixedDelay(new TriggerValidationTask(flowManager, validationTrigger), 5, 5, TimeUnit.SECONDS);
 
@@ -1293,6 +1315,30 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
         } finally {
             writeLock.unlock("onFlowInitialized");
         }
+    }
+
+    private void triggerExtensionRegistryDiscoveryAfterInitialization() {
+        final Set<ExtensionRegistryClientNode> registryClients = flowManager.getAllExtensionRegistryClients();
+        if (registryClients.isEmpty()) {
+            return;
+        }
+
+        validationThreadPool.execute(() -> {
+            for (final ExtensionRegistryClientNode client : registryClients) {
+                try {
+                    validationTrigger.trigger(client);
+                    client.getValidationStatus(EXTENSION_REGISTRY_DISCOVERY_VALIDATION_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (final Exception e) {
+                    LOG.debug("Failed to await validation of extension registry client {} during startup discovery", client.getName(), e);
+                }
+            }
+
+            try {
+                extensionRegistriesManager.discoverExtensions(true);
+            } catch (final Exception e) {
+                LOG.warn("Failed to discover extensions from configured extension registries after startup", e);
+            }
+        });
     }
 
     private void scheduleBackgroundFlowAnalysis(Supplier<VersionedProcessGroup> rootProcessGroupSupplier) {
@@ -3351,6 +3397,22 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
         }
     }
 
+    public void installRemoteBundle(BundleCoordinate bundleCoordinate) {
+        List<NarInstallRequestFromRegistry> requests = extensionManager.getNARInstallRequest(bundleCoordinate);
+        for (NarInstallRequestFromRegistry request : requests) {
+            NarInstallRequest req = new NarInstallRequest.Builder()
+                    .source(NarSource.EXTENSION_REGISTRY_CLIENT)
+                    .sourceIdentifier(request.getSourceIdentifier())
+                    .inputStream(request.getSource())
+                    .build();
+            try {
+                narManager.installNar(req);
+            } catch (IOException e) {
+                LOG.error("Failed to install NAR for " + bundleCoordinate.getCoordinate(), e);
+            }
+        }
+    }
+
     /**
      * Returns a number between 0 (inclusive) and 100 (inclusive) that indicates the percentage of time that processors should
      * track detailed performance, such as CPU seconds used and time reading from/writing to content repo, etc.
@@ -3510,5 +3572,17 @@ public class FlowController implements ReportingTaskProvider, FlowAnalysisRulePr
     public void disableFlowAnalysisRule(FlowAnalysisRuleNode flowAnalysisRule) {
         flowAnalysisRule.verifyCanDisable();
         flowAnalysisRule.disable();
+    }
+
+    public NarManager getNarManager() {
+        return narManager;
+    }
+
+    public void setNarManager(NarManager narManager) {
+        this.narManager = narManager;
+    }
+
+    public ExtensionRegistriesManager getExtensionRegistriesManager() {
+        return extensionRegistriesManager;
     }
 }

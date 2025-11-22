@@ -18,6 +18,7 @@ package org.apache.nifi.services;
 
 import org.apache.nifi.cluster.protocol.DataFlow;
 import org.apache.nifi.lifecycle.LifeCycle;
+import org.apache.nifi.nar.NarManager;
 
 import java.io.File;
 import java.io.IOException;
@@ -108,4 +109,8 @@ public interface FlowService extends LifeCycle {
      */
     DataFlow createDataFlowFromController() throws IOException;
 
+    /**
+     * Returns the NarManager for this FlowService
+     */
+    NarManager getNARManager();
 }

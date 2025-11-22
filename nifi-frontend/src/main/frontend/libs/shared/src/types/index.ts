@@ -57,6 +57,7 @@ export enum ComponentType {
     FlowAnalysisRule = 'FlowAnalysisRule',
     ParameterProvider = 'ParameterProvider',
     FlowRegistryClient = 'FlowRegistryClient',
+    ExtensionRegistryClient = 'ExtensionRegistryClient',
     Flow = 'Flow'
 }
 

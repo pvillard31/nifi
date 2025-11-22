@@ -210,7 +210,7 @@ public final class NarClassLoaders {
                     jettyClassLoader = createNarClassLoader(narDetail.getWorkingDirectory(), rootClassloader, logDetails);
 
                     // remove the jetty nar since its already loaded
-                    narDirectoryBundleLookup.put(narDetail.getWorkingDirectory().getCanonicalPath(), new Bundle(narDetail, jettyClassLoader));
+                    narDirectoryBundleLookup.put(narDetail.getWorkingDirectory().getCanonicalPath(), new Bundle(narDetail, jettyClassLoader, false));
                     narCoordinateClassLoaderLookup.put(narDetail.getCoordinate().getCoordinate(), jettyClassLoader);
                     narDetailsIter.remove();
                 }
@@ -270,7 +270,7 @@ public final class NarClassLoaders {
                     // if we were able to create the nar class loader, store it and remove the details
                     final ClassLoader bundleClassLoader = narClassLoader;
                     if (bundleClassLoader != null) {
-                        narDirectoryBundleLookup.put(narDetail.getWorkingDirectory().getCanonicalPath(), new Bundle(narDetail, bundleClassLoader));
+                        narDirectoryBundleLookup.put(narDetail.getWorkingDirectory().getCanonicalPath(), new Bundle(narDetail, bundleClassLoader, false));
                         String coordinate = narDetail.getCoordinate().getCoordinate();
                         narCoordinateClassLoaderLookup.put(coordinate, narClassLoader);
                         narDetailsIter.remove();
@@ -360,7 +360,7 @@ public final class NarClassLoaders {
                     // If we were able to create the bundle class loader, store it and remove the details
                     final ClassLoader bundleClassLoader = createBundleClassLoader(bundleDetail, bundleIdToCoordinatesLookup, true);
                     if (bundleClassLoader != null) {
-                        final Bundle bundle = new Bundle(bundleDetail, bundleClassLoader);
+                        final Bundle bundle = new Bundle(bundleDetail, bundleClassLoader, false);
                         loadedBundles.add(bundle);
                         additionalBundleDetailsIter.remove();
 

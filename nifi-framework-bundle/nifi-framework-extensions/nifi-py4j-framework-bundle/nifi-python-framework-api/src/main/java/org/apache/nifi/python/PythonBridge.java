@@ -17,7 +17,7 @@
 
 package org.apache.nifi.python;
 
-import org.apache.nifi.components.AsyncLoadedProcessor;
+import org.apache.nifi.components.AsyncLoadedComponent;
 
 import java.io.File;
 import java.io.IOException;
@@ -107,7 +107,7 @@ public interface PythonBridge {
      * @param initialize whether or not to initialize the processor
      * @return a PythonProcessorBridge that can be used for interacting with the Processor
      */
-    AsyncLoadedProcessor createProcessor(String identifier, String type, String version, boolean preferIsolatedProcess, boolean initialize);
+    AsyncLoadedComponent createProcessor(String identifier, String type, String version, boolean preferIsolatedProcess, boolean initialize);
 
     /**
      * A notification that the Processor with the given identifier, type, and version was removed from the flow. This triggers the bridge

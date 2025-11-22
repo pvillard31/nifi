@@ -152,7 +152,7 @@ public class TestStandardControllerServiceFactory {
                 .coordinate(coordinate)
                 .workingDir(new File("target/work"))
                 .build();
-        return new Bundle(details, getClass().getClassLoader());
+        return new Bundle(details, getClass().getClassLoader(), false);
     }
 
     private Bundle createBundle(final String artifactId, final String version) {

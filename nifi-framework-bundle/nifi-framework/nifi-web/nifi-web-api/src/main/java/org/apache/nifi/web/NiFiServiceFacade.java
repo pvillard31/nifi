@@ -24,6 +24,7 @@ import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.c2.protocol.component.api.ControllerServiceDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowRegistryClientDefinition;
+import org.apache.nifi.c2.protocol.component.api.ExtensionRegistryClientDefinition;
 import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
 import org.apache.nifi.c2.protocol.component.api.ProcessorDefinition;
 import org.apache.nifi.c2.protocol.component.api.ReportingTaskDefinition;
@@ -65,6 +66,7 @@ import org.apache.nifi.web.api.dto.CounterDTO;
 import org.apache.nifi.web.api.dto.CountersDTO;
 import org.apache.nifi.web.api.dto.DocumentedTypeDTO;
 import org.apache.nifi.web.api.dto.DropRequestDTO;
+import org.apache.nifi.web.api.dto.ExtensionRegistryClientDTO;
 import org.apache.nifi.web.api.dto.FlowAnalysisRuleDTO;
 import org.apache.nifi.web.api.dto.FlowFileDTO;
 import org.apache.nifi.web.api.dto.FlowRegistryClientDTO;
@@ -116,6 +118,7 @@ import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEnti
 import org.apache.nifi.web.api.entity.CopyRequestEntity;
 import org.apache.nifi.web.api.entity.CopyResponseEntity;
 import org.apache.nifi.web.api.entity.CurrentUserEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisResultEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowBreadcrumbEntity;
@@ -510,6 +513,15 @@ public interface NiFiServiceFacade {
     Set<DocumentedTypeDTO> getFlowRegistryTypes();
 
     FlowRegistryClientDefinition getFlowRegistryClientDefinition(String group, String artifact, String version, String type);
+
+    ExtensionRegistryClientDefinition getExtensionRegistryClientDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Returns the list of extension registry client types.
+     *
+     * @return The list of available extension registry client types matching specified criteria
+     */
+    Set<DocumentedTypeDTO> getExtensionRegistryTypes();
 
     /**
      * Returns the RuntimeManifest for this NiFi instance.
@@ -1793,6 +1805,12 @@ public interface NiFiServiceFacade {
     void verifyCanVerifyFlowRegistryClientConfig(String registryClientId);
 
     /**
+     * Verifies that the Extension Registry Client with the given identifier is in a state where its configuration can be verified
+     * @param registryClientId the ID of the registry client
+     */
+    void verifyCanVerifyExtensionRegistryClientConfig(String registryClientId);
+
+    /**
      * Verifies that the Process Group with the given identifier can be saved to the flow registry
      *
      * @param groupId the ID of the Process Group
@@ -2525,7 +2543,7 @@ public interface NiFiServiceFacade {
     void verifyDeleteReportingTask(String reportingTaskId);
 
     // ----------------------------------------
-    // Registry methods
+    // Flow Registry methods
     // ----------------------------------------
 
     /**
@@ -2595,7 +2613,11 @@ public interface NiFiServiceFacade {
 
     List<ConfigVerificationResultDTO> performFlowRegistryClientConfigVerification(String registryClientId, Map<String, String> properties, Map<String, String> variables);
 
+    List<ConfigVerificationResultDTO> performExtensionRegistryClientConfigVerification(String registryClientId, Map<String, String> properties, Map<String, String> variables);
+
     ConfigurationAnalysisEntity analyzeFlowRegistryClientConfiguration(String registryClientId, Map<String, String> properties);
+
+    ConfigurationAnalysisEntity analyzeExtensionRegistryClientConfiguration(String registryClientId, Map<String, String> properties);
 
     /**
      * Gets the flows for the current user for the specified registry and bucket.
@@ -2654,6 +2676,76 @@ public interface NiFiServiceFacade {
      * @param registryClientId the registry client id
      */
     void verifyDeleteRegistry(String registryClientId);
+
+    // ----------------------------------------
+    // Extension Registry methods
+    // ----------------------------------------
+
+    /**
+     * Creates an extension registry client.
+     *
+     * @param revision revision
+     * @param extensionRegistryClientDTO The extension registry client DTO
+     * @return The reporting task DTO
+     */
+    ExtensionRegistryClientEntity createExtensionRegistryClient(Revision revision, ExtensionRegistryClientDTO extensionRegistryClientDTO);
+
+    /**
+     * Gets an extension registry client with the specified id.
+     *
+     * @param registryClientId registry client id
+     * @return entity
+     */
+    ExtensionRegistryClientEntity getExtensionRegistryClient(String registryClientId);
+
+    /**
+     * Returns all extension registry clients.
+     *
+     * @return extension registry clients
+     */
+    Set<ExtensionRegistryClientEntity> getExtensionRegistryClients();
+
+    /**
+     * Gets all extension registries for the current user.
+     *
+     * @return extension registry clients
+     */
+    Set<ExtensionRegistryClientEntity> getExtensionRegistryClientsForUser();
+
+    /**
+     * Get the descriptor for the specified property of the specified extension registry client.
+     *
+     * @param id id
+     * @param property property
+     * @param sensitive requested sensitive status
+     * @return descriptor
+     */
+    PropertyDescriptorDTO getExtensionRegistryClientPropertyDescriptor(final String id, final String property, final boolean sensitive);
+
+    /**
+     * Updates the specified extension registry using the specified revision.
+     *
+     * @param revision revision
+     * @param extensionRegistryClientDTO the extension registry dto
+     * @return the updated extension registry entity
+     */
+    ExtensionRegistryClientEntity updateExtensionRegistryClient(Revision revision, ExtensionRegistryClientDTO extensionRegistryClientDTO);
+
+    /**
+     * Deletes the specified extension registry using the specified revision.
+     *
+     * @param revision revision
+     * @param registryClientId id
+     * @return the deleted extension registry entity
+     */
+    ExtensionRegistryClientEntity deleteExtensionRegistryClient(Revision revision, String registryClientId);
+
+    /**
+     * Verifies the specified extension registry can be removed.
+     *
+     * @param registryClientId the extension registry client id
+     */
+    void verifyDeleteExtensionRegistry(String registryClientId);
 
     // ----------------------------------------
     // History methods

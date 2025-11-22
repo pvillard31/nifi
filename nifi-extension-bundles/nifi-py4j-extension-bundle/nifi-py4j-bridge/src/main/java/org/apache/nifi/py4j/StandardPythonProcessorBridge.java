@@ -17,6 +17,7 @@
 
 package org.apache.nifi.py4j;
 
+import org.apache.nifi.components.LoadState;
 import org.apache.nifi.python.PythonController;
 import org.apache.nifi.python.processor.PythonProcessorAdapter;
 import org.apache.nifi.python.processor.PythonProcessorBridge;
@@ -28,8 +29,6 @@ import java.io.File;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-
-import static org.apache.nifi.components.AsyncLoadedProcessor.LoadState;
 
 public class StandardPythonProcessorBridge implements PythonProcessorBridge {
     private static final Logger logger = LoggerFactory.getLogger(StandardPythonProcessorBridge.class);

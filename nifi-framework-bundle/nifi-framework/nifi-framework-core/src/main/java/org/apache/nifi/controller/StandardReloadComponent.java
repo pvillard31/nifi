@@ -20,6 +20,7 @@ import org.apache.nifi.annotation.lifecycle.OnRemoved;
 import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.components.state.StateManager;
 import org.apache.nifi.controller.exception.ControllerServiceInstantiationException;
+import org.apache.nifi.controller.extension.ExtensionRegistryClientInstantiationException;
 import org.apache.nifi.controller.flowanalysis.FlowAnalysisRuleInstantiationException;
 import org.apache.nifi.controller.flowrepository.FlowRepositoryClientInstantiationException;
 import org.apache.nifi.controller.parameter.ParameterProviderInstantiationException;
@@ -39,6 +40,8 @@ import org.apache.nifi.processor.SimpleProcessLogger;
 import org.apache.nifi.processor.StandardProcessContext;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.reporting.ReportingTask;
 import org.apache.nifi.util.ReflectionUtils;
 import org.slf4j.Logger;
@@ -49,6 +52,7 @@ import java.util.Set;
 
 public class StandardReloadComponent implements ReloadComponent {
     private static final Logger logger = LoggerFactory.getLogger(StandardReloadComponent.class);
+    private static final String MISSING_PREFIX = "(Missing) ";
 
     private final FlowController flowController;
 
@@ -107,6 +111,7 @@ public class StandardReloadComponent implements ReloadComponent {
         final LoggableComponent<Processor> newProcessor = new LoggableComponent<>(newNode.getProcessor(), newNode.getBundleCoordinate(), terminationAwareLogger);
         existingNode.setProcessor(newProcessor);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getProcessor().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -170,6 +175,7 @@ public class StandardReloadComponent implements ReloadComponent {
         // set the new impl, proxy, and invocation handler into the existing node
         existingNode.setControllerServiceAndProxy(loggableImplementation, loggableProxy, invocationHandler);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getControllerServiceImplementation().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -219,6 +225,7 @@ public class StandardReloadComponent implements ReloadComponent {
         final LoggableComponent<ReportingTask> newReportingTask = new LoggableComponent<>(newNode.getReportingTask(), newNode.getBundleCoordinate(), terminationAwareLogger);
         existingNode.setReportingTask(newReportingTask);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getReportingTask().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -269,6 +276,7 @@ public class StandardReloadComponent implements ReloadComponent {
         final LoggableComponent<FlowAnalysisRule> newFlowAnalysisRule = new LoggableComponent<>(newNode.getFlowAnalysisRule(), newNode.getBundleCoordinate(), terminationAwareLogger);
         existingNode.setFlowAnalysisRule(newFlowAnalysisRule);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getFlowAnalysisRule().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -318,6 +326,7 @@ public class StandardReloadComponent implements ReloadComponent {
                 .getBundleCoordinate(), terminationAwareLogger);
         existingNode.setParameterProvider(newParameterProvider);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getParameterProvider().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -360,6 +369,7 @@ public class StandardReloadComponent implements ReloadComponent {
                 .getBundleCoordinate(), terminationAwareLogger);
         existingNode.setComponent(newClient);
         existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getComponent().getClass().getSimpleName());
 
         // need to refresh the properties in case we are changing from ghost component to real component
         existingNode.refreshProperties();
@@ -368,5 +378,55 @@ public class StandardReloadComponent implements ReloadComponent {
         existingNode.resetValidationState();
         flowController.getValidationTrigger().triggerAsync(existingNode);
 
+    }
+
+    @Override
+    public void reload(final ExtensionRegistryClientNode existingNode, final String newType, final BundleCoordinate bundleCoordinate, final Set<URL> additionalUrls)
+            throws ExtensionRegistryClientInstantiationException {
+        if (existingNode == null) {
+            throw new IllegalStateException("Existing ExtensionRegistryClientNode cannot be null");
+        }
+
+        final String id = existingNode.getComponent().getIdentifier();
+
+        if (existingNode.getLogger() != null) {
+            existingNode.getLogger().debug("Reloading component {} to type {} from bundle {}", id, newType, bundleCoordinate);
+        }
+
+        final ExtensionManager extensionManager = flowController.getExtensionManager();
+        final ClassLoader existingInstanceClassLoader = extensionManager.getInstanceClassLoader(id);
+
+        final ExtensionRegistryClientNode newNode = flowController.getFlowManager().createExtensionRegistryClient(
+                newType, id, bundleCoordinate, additionalUrls, true, false, null);
+        extensionManager.closeURLClassLoader(id, existingInstanceClassLoader);
+
+        final ComponentLog componentLogger = new SimpleProcessLogger(id, existingNode.getComponent(), new StandardLoggingContext());
+        final TerminationAwareLogger terminationAwareLogger = new TerminationAwareLogger(componentLogger);
+        LogRepositoryFactory.getRepository(id).setLogger(terminationAwareLogger);
+
+        final LoggableComponent<ExtensionRegistryClient> newClient = new LoggableComponent<>(
+                (ExtensionRegistryClient) newNode.getComponent(),
+                newNode.getBundleCoordinate(),
+                terminationAwareLogger);
+        existingNode.setComponent(newClient);
+        existingNode.setExtensionMissing(newNode.isExtensionMissing());
+        updateMissingName(existingNode, newNode.getComponent().getClass().getSimpleName());
+
+        existingNode.refreshProperties();
+
+        logger.debug("Triggering async validation of {} due to extension registry client reload", existingNode);
+        existingNode.resetValidationState();
+        flowController.getValidationTrigger().triggerAsync(existingNode);
+    }
+
+    private void updateMissingName(final ComponentNode existingNode, final String replacementName) {
+        if (existingNode == null || replacementName == null) {
+            return;
+        }
+
+        final String currentName = existingNode.getName();
+        if (currentName != null && currentName.startsWith(MISSING_PREFIX)) {
+            existingNode.setName(replacementName);
+        }
     }
 }

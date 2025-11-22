@@ -116,8 +116,8 @@
         <node.version>v22.19.0</node.version>
 
         <!-- NiFi build -->
-        <nifi-api.version>2.5.0</nifi-api.version>
-        <nifi.nar.maven.plugin.version>2.2.0</nifi.nar.maven.plugin.version>
+        <nifi-api.version>2.6.0-SNAPSHOT</nifi-api.version>
+        <nifi.nar.maven.plugin.version>2.3.0-SNAPSHOT</nifi.nar.maven.plugin.version>
 
         <!-- CSPs SDK -->
         <software.amazon.awssdk.version>2.39.0</software.amazon.awssdk.version>

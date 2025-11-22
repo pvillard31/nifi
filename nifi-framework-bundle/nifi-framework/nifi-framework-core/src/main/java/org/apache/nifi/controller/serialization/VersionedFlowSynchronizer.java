@@ -56,6 +56,7 @@ import org.apache.nifi.flow.ScheduledState;
 import org.apache.nifi.flow.VersionedAsset;
 import org.apache.nifi.flow.VersionedComponent;
 import org.apache.nifi.flow.VersionedControllerService;
+import org.apache.nifi.flow.VersionedExtensionRegistryClient;
 import org.apache.nifi.flow.VersionedExternalFlow;
 import org.apache.nifi.flow.VersionedFlowAnalysisRule;
 import org.apache.nifi.flow.VersionedFlowRegistryClient;
@@ -83,6 +84,7 @@ import org.apache.nifi.parameter.ParameterGroup;
 import org.apache.nifi.parameter.ParameterProviderConfiguration;
 import org.apache.nifi.parameter.StandardParameterProviderConfiguration;
 import org.apache.nifi.persistence.FlowConfigurationArchiveManager;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.diff.ComparableDataFlow;
 import org.apache.nifi.registry.flow.diff.DifferenceDescriptor;
@@ -137,6 +139,7 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
     private static final Logger logger = LoggerFactory.getLogger(VersionedFlowSynchronizer.class);
 
     private final ExtensionManager extensionManager;
+    private static final String REMOTE_BUNDLE_LOG_TEMPLATE = "Queuing download of remote bundle {} referenced in incoming flow";
     private final File flowStorageFile;
     private final FlowConfigurationArchiveManager archiveManager;
 
@@ -317,6 +320,21 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
             }
         }
 
+        if (dataflow.getExtensionRegistries() == null) {
+            dataflow.setExtensionRegistries(new ArrayList<>());
+        }
+
+        for (final VersionedExtensionRegistryClient extensionRegistry : dataflow.getExtensionRegistries()) {
+            if (missingComponentIds.contains(extensionRegistry.getInstanceIdentifier())) {
+                continue;
+            }
+
+            final Bundle compatibleBundle = getCompatibleBundle(extensionRegistry.getBundle(), extensionManager, extensionRegistry.getType());
+            if (compatibleBundle != null) {
+                extensionRegistry.setBundle(compatibleBundle);
+            }
+        }
+
         if (dataflow.getParameterProviders() == null) {
             dataflow.setParameterProviders(new ArrayList<>());
         }
@@ -377,21 +395,101 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
     }
 
     private Bundle getCompatibleBundle(final Bundle bundle, final ExtensionManager extensionManager, final String type) {
-        final org.apache.nifi.bundle.Bundle exactBundle = extensionManager.getBundle(new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion()));
+        BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+
+        final org.apache.nifi.bundle.Bundle exactBundle = extensionManager.getBundle(coordinate);
         if (exactBundle != null) {
             return bundle;
         }
 
-        final BundleDTO bundleDto = new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+        // Try resolving to a remote version if available
+        final BundleCoordinate resolvedRemote = extensionManager.resolveRemoteBundle(coordinate);
+        if (resolvedRemote != null) {
+            logger.debug("Resolved missing bundle {} to remote {}", coordinate.getCoordinate(), resolvedRemote.getCoordinate());
+            return new Bundle(resolvedRemote.getGroup(), resolvedRemote.getId(), resolvedRemote.getVersion(), true);
+        }
+
+        final BundleDTO bundleDto = new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), bundle.isRemote());
         final Optional<BundleCoordinate> optionalCoordinate = BundleUtils.getOptionalCompatibleBundle(extensionManager, type, bundleDto);
         if (optionalCoordinate.isPresent()) {
-            final BundleCoordinate coordinate = optionalCoordinate.get();
-            logger.debug("Found compatible bundle {} for {}:{}:{} and type {}", coordinate.getCoordinate(), bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), type);
-            return new Bundle(coordinate.getGroup(), coordinate.getId(), coordinate.getVersion());
+            final BundleCoordinate compatibleCoordinate = optionalCoordinate.get();
+            logger.debug("Found compatible bundle {} for {}:{}:{} and type {}", compatibleCoordinate.getCoordinate(), bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), type);
+            return new Bundle(compatibleCoordinate.getGroup(), compatibleCoordinate.getId(), compatibleCoordinate.getVersion(), bundle.isRemote());
         }
 
         logger.debug("Could not find a compatible bundle for {}:{}:{} type {}", bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), type);
         return null;
+    }
+
+    private void installMissingRemoteBundles(final FlowController controller, final VersionedDataflow versionedFlow) {
+        logger.info("Inspecting imported flow for remote bundles to install");
+
+        final Set<BundleCoordinate> toInstall = new HashSet<>();
+
+        addBundleIfRemote(versionedFlow.getReportingTasks(), VersionedReportingTask::getBundle, toInstall);
+        addBundleIfRemote(versionedFlow.getFlowAnalysisRules(), VersionedFlowAnalysisRule::getBundle, toInstall);
+        addBundleIfRemote(versionedFlow.getParameterProviders(), VersionedParameterProvider::getBundle, toInstall);
+        addBundleIfRemote(versionedFlow.getRegistries(), VersionedFlowRegistryClient::getBundle, toInstall);
+        addBundleIfRemote(versionedFlow.getExtensionRegistries(), VersionedExtensionRegistryClient::getBundle, toInstall);
+        addBundleIfRemote(versionedFlow.getControllerServices(), VersionedControllerService::getBundle, toInstall);
+
+        if (versionedFlow.getRootGroup() != null) {
+            collectProcessGroupBundles(versionedFlow.getRootGroup(), toInstall);
+        }
+
+        logger.info("Collected {} bundle(s) referenced by imported flow", toInstall.size());
+
+        for (BundleCoordinate coordinate : toInstall) {
+            logger.info(REMOTE_BUNDLE_LOG_TEMPLATE, coordinate.getCoordinate());
+            controller.installRemoteBundle(coordinate);
+        }
+
+        logger.info("Queued {} bundle(s) for remote installation during flow import", toInstall.size());
+    }
+
+    private void collectProcessGroupBundles(final VersionedProcessGroup group, final Set<BundleCoordinate> coordinates) {
+        addBundleIfRemote(group.getControllerServices(), VersionedControllerService::getBundle, coordinates);
+        addBundleIfRemote(group.getProcessors(), VersionedProcessor::getBundle, coordinates);
+        for (VersionedProcessGroup child : group.getProcessGroups()) {
+            collectProcessGroupBundles(child, coordinates);
+        }
+    }
+
+    private <T> void addBundleIfRemote(final Collection<T> components, final Function<T, Bundle> bundleAccessor, final Set<BundleCoordinate> coordinates) {
+        if (components == null) {
+            return;
+        }
+
+        for (T component : components) {
+            final Bundle bundle = bundleAccessor.apply(component);
+            if (bundle == null || bundle.getGroup() == null || bundle.getArtifact() == null || bundle.getVersion() == null) {
+                logger.debug("Skipping bundle resolution for component {} because bundle is incomplete", component);
+                continue;
+            }
+
+            BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+
+            final BundleCoordinate resolved = extensionManager.resolveRemoteBundle(coordinate);
+            if (resolved != null) {
+                if (!resolved.equals(coordinate)) {
+                    logger.info("Resolved remote bundle {} to available version {}", coordinate.getCoordinate(), resolved.getCoordinate());
+                }
+                coordinate = resolved;
+            }
+
+            if (resolved != null) {
+                logger.info("Adding bundle {} to remote install set", coordinate.getCoordinate());
+                coordinates.add(coordinate);
+                continue;
+            }
+
+            if (bundle.isRemote() || extensionManager.isRemoteBundle(coordinate)) {
+                logger.info("Adding bundle {} to remote install set (marked remote)", coordinate.getCoordinate());
+                coordinates.add(coordinate);
+            } else {
+                logger.debug("Skipping bundle {}:{}:{} (not remote and no remote resolution)", bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+            }
+        }
     }
 
     private void synchronizeFlow(final FlowController controller, final DataFlow existingFlow, final DataFlow proposedFlow, final AffectedComponentSet affectedComponentSet) {
@@ -401,7 +499,10 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
 
             final PropertyEncryptor encryptor = controller.getEncryptor();
 
-            if (versionedFlow != null) {
+                if (versionedFlow != null) {
+                logger.info("Starting flow synchronization with versioned flow");
+                installMissingRemoteBundles(controller, versionedFlow);
+
                 controller.setMaxTimerDrivenThreadCount(versionedFlow.getMaxTimerDrivenThreadCount());
                 ProcessGroup rootGroup = controller.getFlowManager().getRootGroup();
 
@@ -413,12 +514,13 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
                 versionedExternalFlow.setFlowContents(versionedFlow.getRootGroup());
 
                 // Inherit controller-level components.
+                inheritExtensionRegistryClients(controller, versionedFlow, affectedComponentSet);
                 inheritControllerServices(controller, versionedFlow, affectedComponentSet);
                 inheritParameterProviders(controller, versionedFlow, affectedComponentSet);
                 inheritParameterContexts(controller, versionedFlow);
                 inheritReportingTasks(controller, versionedFlow, affectedComponentSet);
                 inheritFlowAnalysisRules(controller, versionedFlow, affectedComponentSet);
-                inheritRegistryClients(controller, versionedFlow, affectedComponentSet);
+                inheritFlowRegistryClients(controller, versionedFlow, affectedComponentSet);
 
                 final ComponentIdGenerator componentIdGenerator = (proposedId, instanceId, destinationGroupId) -> instanceId;
 
@@ -524,6 +626,7 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
         dataflow.setParameterContexts(Collections.emptyList());
         dataflow.setParameterProviders(Collections.emptyList());
         dataflow.setRegistries(Collections.emptyList());
+        dataflow.setExtensionRegistries(Collections.emptyList());
         dataflow.setReportingTasks(Collections.emptyList());
         dataflow.setFlowAnalysisRules(Collections.emptyList());
 
@@ -550,7 +653,7 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
         return affectedComponentSet;
     }
 
-    private void inheritRegistryClients(final FlowController controller, final VersionedDataflow dataflow, final AffectedComponentSet affectedComponentSet) {
+    private void inheritFlowRegistryClients(final FlowController controller, final VersionedDataflow dataflow, final AffectedComponentSet affectedComponentSet) {
         final FlowManager flowManager = controller.getFlowManager();
 
         for (final VersionedFlowRegistryClient versionedFlowRegistryClient : dataflow.getRegistries()) {
@@ -559,9 +662,30 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
             if (existing == null) {
                 addFlowRegistryClient(controller, versionedFlowRegistryClient);
             } else if (affectedComponentSet.isFlowRegistryClientAffected(existing.getIdentifier())) {
-                updateRegistry(existing, versionedFlowRegistryClient, controller);
+                updateFlowRegistry(existing, versionedFlowRegistryClient, controller);
             }
         }
+    }
+
+    private void inheritExtensionRegistryClients(final FlowController controller, final VersionedDataflow dataflow, final AffectedComponentSet affectedComponentSet) {
+        final FlowManager flowManager = controller.getFlowManager();
+
+        final List<VersionedExtensionRegistryClient> registries = dataflow == null ? null : dataflow.getExtensionRegistries();
+        if (registries == null) {
+            return;
+        }
+
+        for (final VersionedExtensionRegistryClient versionedExtensionRegistryClient : registries) {
+            final ExtensionRegistryClientNode existing = flowManager.getExtensionRegistryClient(versionedExtensionRegistryClient.getIdentifier());
+
+            if (existing == null) {
+                addExtensionRegistryClient(controller, versionedExtensionRegistryClient);
+            } else if (affectedComponentSet.isExtensionRegistryClientAffected(existing.getIdentifier())) {
+            updateExtensionRegistry(existing, versionedExtensionRegistryClient, controller);
+        }
+    }
+
+        controller.getExtensionRegistriesManager().discoverExtensions();
     }
 
     private void removeMissingRegistryClients(final FlowManager flowManager, final VersionedDataflow dataflow) {
@@ -583,10 +707,19 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
 
         final FlowRegistryClientNode flowRegistryClient = flowController.getFlowManager().createFlowRegistryClient(
                 versionedFlowRegistryClient.getType(), versionedFlowRegistryClient.getIdentifier(), coordinate, Collections.emptySet(), false, true, null);
-        updateRegistry(flowRegistryClient, versionedFlowRegistryClient, flowController);
+        updateFlowRegistry(flowRegistryClient, versionedFlowRegistryClient, flowController);
     }
 
-    private void updateRegistry(final FlowRegistryClientNode flowRegistryClient, final VersionedFlowRegistryClient versionedFlowRegistryClient, final FlowController flowController) {
+    private void addExtensionRegistryClient(final FlowController flowController, final VersionedExtensionRegistryClient versionedExtensionRegistryClient) {
+        final BundleCoordinate coordinate = createBundleCoordinate(extensionManager, versionedExtensionRegistryClient.getBundle(), versionedExtensionRegistryClient.getType());
+
+        final ExtensionRegistryClientNode extensionRegistryClient = flowController.getFlowManager()
+                .createExtensionRegistryClient(
+                        versionedExtensionRegistryClient.getType(), versionedExtensionRegistryClient.getIdentifier(), coordinate, Collections.emptySet(), false, true, null);
+        updateExtensionRegistry(extensionRegistryClient, versionedExtensionRegistryClient, flowController);
+    }
+
+    private void updateFlowRegistry(final FlowRegistryClientNode flowRegistryClient, final VersionedFlowRegistryClient versionedFlowRegistryClient, final FlowController flowController) {
         flowRegistryClient.setName(versionedFlowRegistryClient.getName());
         flowRegistryClient.setDescription(versionedFlowRegistryClient.getDescription());
         flowRegistryClient.setAnnotationData(versionedFlowRegistryClient.getAnnotationData());
@@ -594,6 +727,17 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
         final Set<String> sensitiveDynamicPropertyNames = getSensitiveDynamicPropertyNames(flowRegistryClient, versionedFlowRegistryClient);
         final Map<String, String> decryptedProperties = decryptProperties(versionedFlowRegistryClient.getProperties(), flowController.getEncryptor());
         flowRegistryClient.setProperties(decryptedProperties, false, sensitiveDynamicPropertyNames);
+    }
+
+    private void updateExtensionRegistry(final ExtensionRegistryClientNode extensionRegistryClient, final VersionedExtensionRegistryClient versionedExtensionRegistryClient,
+            final FlowController flowController) {
+        extensionRegistryClient.setName(versionedExtensionRegistryClient.getName());
+        extensionRegistryClient.setDescription(versionedExtensionRegistryClient.getDescription());
+        extensionRegistryClient.setAnnotationData(versionedExtensionRegistryClient.getAnnotationData());
+
+        final Set<String> sensitiveDynamicPropertyNames = getSensitiveDynamicPropertyNames(extensionRegistryClient, versionedExtensionRegistryClient);
+        final Map<String, String> decryptedProperties = decryptProperties(versionedExtensionRegistryClient.getProperties(), flowController.getEncryptor());
+        extensionRegistryClient.setProperties(decryptedProperties, false, sensitiveDynamicPropertyNames);
     }
 
     private void inheritReportingTasks(final FlowController controller, final VersionedDataflow dataflow, final AffectedComponentSet affectedComponentSet) {

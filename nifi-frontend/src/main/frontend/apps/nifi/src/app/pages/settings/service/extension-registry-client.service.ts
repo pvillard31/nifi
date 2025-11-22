@@ -1,0 +1,79 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { Client } from '../../../service/client.service';
+import { NiFiCommon } from '@nifi/shared';
+import {
+    CreateExtensionRegistryClientRequest,
+    DeleteExtensionRegistryClientRequest,
+    EditExtensionRegistryClientRequest
+} from '../state/extension-registry-clients';
+import { ClusterConnectionService } from '../../../service/cluster-connection.service';
+import { ExtensionRegistryClientEntity, PropertyDescriptorRetriever } from '../../../state/shared';
+
+@Injectable({ providedIn: 'root' })
+export class ExtensionRegistryClientService implements PropertyDescriptorRetriever {
+    private httpClient = inject(HttpClient);
+    private client = inject(Client);
+    private nifiCommon = inject(NiFiCommon);
+    private clusterConnectionService = inject(ClusterConnectionService);
+
+    private static readonly API: string = '../nifi-api';
+
+    getExtensionRegistryClients(): Observable<any> {
+        return this.httpClient.get(`${ExtensionRegistryClientService.API}/controller/extension-registry-clients`);
+    }
+
+    createExtensionRegistryClient(request: CreateExtensionRegistryClientRequest): Observable<any> {
+        return this.httpClient.post(`${ExtensionRegistryClientService.API}/controller/extension-registry-clients`, request);
+    }
+
+    getPropertyDescriptor(id: string, propertyName: string, sensitive: boolean): Observable<any> {
+        const params: any = {
+            propertyName,
+            sensitive
+        };
+        return this.httpClient.get(`${ExtensionRegistryClientService.API}/controller/extension-registry-clients/${id}/descriptors`, {
+            params
+        });
+    }
+
+    updateExtensionRegistryClient(request: EditExtensionRegistryClientRequest): Observable<any> {
+        return this.httpClient.put(this.nifiCommon.stripProtocol(request.uri), request.payload);
+    }
+
+    deleteExtensionRegistryClient(deleteRequest: DeleteExtensionRegistryClientRequest): Observable<any> {
+        const entity: ExtensionRegistryClientEntity = deleteRequest.extensionRegistryClient;
+        const params = new HttpParams({
+            fromObject: {
+                ...this.client.getRevision(entity),
+                disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged()
+            }
+        });
+        return this.httpClient.delete(this.nifiCommon.stripProtocol(entity.uri), { params });
+    }
+
+    clearBulletins(request: { uri: string; fromTimestamp: string }): Observable<any> {
+        const payload = {
+            fromTimestamp: request.fromTimestamp
+        };
+        return this.httpClient.post(`${this.nifiCommon.stripProtocol(request.uri)}/bulletins/clear-requests`, payload);
+    }
+}

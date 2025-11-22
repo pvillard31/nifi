@@ -63,6 +63,7 @@ import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.groups.StandardProcessGroup;
 import org.apache.nifi.groups.StatelessGroupNodeFactory;
 import org.apache.nifi.logging.ControllerServiceLogObserver;
+import org.apache.nifi.logging.ExtensionRegistryClientLogObserver;
 import org.apache.nifi.logging.FlowAnalysisRuleLogObserver;
 import org.apache.nifi.logging.FlowRegistryClientLogObserver;
 import org.apache.nifi.logging.LogLevel;
@@ -76,6 +77,7 @@ import org.apache.nifi.nar.NarCloseable;
 import org.apache.nifi.parameter.ParameterContextManager;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.processor.Processor;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.PublicPort;
 import org.apache.nifi.remote.StandardPublicPort;
@@ -160,6 +162,11 @@ public class StandardFlowManager extends AbstractFlowManager implements FlowMana
             TransferDirection.SEND, ConnectableType.OUTPUT_PORT, authorizer, bulletinRepository,
             processScheduler, isSiteToSiteSecure, nifiProperties.getBoredYieldDuration(),
             IdentityMappingUtil.getIdentityMappings(nifiProperties));
+    }
+
+    @Override
+    public void installRemoteBundle(final BundleCoordinate bundleCoordinate) {
+        flowController.installRemoteBundle(bundleCoordinate);
     }
 
     /**
@@ -367,6 +374,7 @@ public class StandardFlowManager extends AbstractFlowManager implements FlowMana
             .ruleViolationsManager(getRuleViolationsManager().orElse(null))
             .classloaderIsolationKey(classloaderIsolationKey)
             .pythonBridge(flowController.getPythonBridge())
+            .flowController(flowController)
             .buildProcessor();
 
         LogRepositoryFactory.getRepository(procNode.getIdentifier()).setLogger(procNode.getLogger());
@@ -449,12 +457,12 @@ public class StandardFlowManager extends AbstractFlowManager implements FlowMana
         if (registerLogObserver) {
             onFlowRegistryClientAdded(clientNode);
 
-            // Register log observer to provide bulletins when reporting task logs anything at WARN level or above
+            // Register log observer to provide bulletins when flow registry client logs
+            // anything at WARN level or above
             logRepository.addObserver(LogLevel.WARN, new FlowRegistryClientLogObserver(bulletinRepository, clientNode));
         }
 
         return clientNode;
-
     }
 
     @Override
@@ -743,6 +751,7 @@ public class StandardFlowManager extends AbstractFlowManager implements FlowMana
             .flowAnalyzer(getFlowAnalyzer().orElse(null))
             .ruleViolationsManager(getRuleViolationsManager().orElse(null))
             .classloaderIsolationKey(classloaderIsolationKey)
+            .flowController(flowController)
             .buildControllerService();
 
         LogRepositoryFactory.getRepository(serviceNode.getIdentifier()).setLogger(serviceNode.getLogger());
@@ -809,5 +818,88 @@ public class StandardFlowManager extends AbstractFlowManager implements FlowMana
                     alternatives
             );
         }
+    }
+
+    @Override
+    public ExtensionRegistryClientNode createExtensionRegistryClient(String type, String id, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls, boolean firstTimeAdded,
+            boolean registerLogObserver, String classloaderIsolationKey) {
+        requireNonNull(type);
+        requireNonNull(id);
+        requireNonNull(bundleCoordinate);
+
+        // make sure the first reference to LogRepository happens outside of a
+        // NarCloseable so that we use the framework's ClassLoader
+        final LogRepository logRepository = LogRepositoryFactory.getRepository(id);
+        final ExtensionManager extensionManager = flowController.getExtensionManager();
+
+        final ExtensionRegistryClientNode clientNode = new ExtensionBuilder()
+                .identifier(id)
+                .type(type)
+                .flowController(flowController)
+                .bundleCoordinate(bundleCoordinate)
+                .processScheduler(processScheduler)
+                .controllerServiceProvider(flowController.getControllerServiceProvider())
+                .nodeTypeProvider(flowController)
+                .validationTrigger(flowController.getValidationTrigger())
+                .reloadComponent(flowController.getReloadComponent())
+                .addClasspathUrls(additionalUrls)
+                .kerberosConfig(flowController.createKerberosConfig(nifiProperties))
+                .systemSslContext(sslContext)
+                .extensionManager(extensionManager)
+                .classloaderIsolationKey(classloaderIsolationKey)
+                .flowAnalysisAtRegistryCommit(nifiProperties.flowRegistryCheckForRuleViolationsBeforeCommit())
+                .flowAnalyzer(getFlowAnalyzer().orElse(null))
+                .ruleViolationsManager(getRuleViolationsManager().orElse(null))
+                .buildExtensionRegistryClient();
+
+        LogRepositoryFactory.getRepository(clientNode.getIdentifier()).setLogger(clientNode.getLogger());
+
+        if (firstTimeAdded) {
+            final Class<?> clientClass = clientNode.getComponent().getClass();
+            final String identifier = clientNode.getComponent().getIdentifier();
+
+            try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), clientClass, identifier)) {
+                ReflectionUtils.invokeMethodsWithAnnotation(OnAdded.class, clientNode.getComponent());
+
+                if (flowController.isInitialized()) {
+                    final ConfigurationContext configurationContext = new StandardConfigurationContext(
+                            clientNode, flowController.getControllerServiceProvider(), null);
+                    ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnConfigurationRestored.class, clientNode.getComponent(), configurationContext);
+                }
+            } catch (final Exception e) {
+                throw new ComponentLifeCycleException("Failed to invoke On-Added Lifecycle methods of " + clientNode.getComponent(), e);
+            }
+        }
+
+        if (registerLogObserver) {
+            onExtensionRegistryClientAdded(clientNode);
+
+            // Register log observer to provide bulletins when extension registry logs
+            // anything at WARN level or above
+            logRepository.addObserver(LogLevel.WARN, new ExtensionRegistryClientLogObserver(bulletinRepository, clientNode));
+        }
+
+        return clientNode;
+    }
+
+    @Override
+    public void removeExtensionRegistryClient(ExtensionRegistryClientNode clientNode) {
+        final ExtensionRegistryClientNode existing = getExtensionRegistryClient(clientNode.getIdentifier());
+
+        if (existing == null || existing != clientNode) {
+            throw new IllegalStateException("Extension Registry Client " + clientNode + " does not exist in this Flow");
+        }
+
+        final Class<?> clientClass = clientNode.getComponent().getClass();
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), clientClass, clientNode.getComponent().getIdentifier())) {
+            final ConfigurationContext configurationContext = new StandardConfigurationContext(clientNode, flowController.getControllerServiceProvider(), null);
+            ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnRemoved.class, clientNode.getComponent(), configurationContext);
+        }
+
+        onExtensionRegistryClientRemoved(clientNode);
+        LogRepositoryFactory.removeRepository(clientNode.getIdentifier());
+        processScheduler.submitFrameworkTask(() -> flowController.getStateManagerProvider().onComponentRemoved(clientNode.getIdentifier()));
+
+        getExtensionManager().removeInstanceClassLoader(clientNode.getIdentifier());
     }
 }

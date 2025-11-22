@@ -43,6 +43,8 @@ export class ComponentTypeNamePipe implements PipeTransform {
                 return 'Flow Analysis Rule';
             case ComponentType.FlowRegistryClient:
                 return 'Flow Registry Client';
+            case ComponentType.ExtensionRegistryClient:
+                return 'Extension Registry Client';
             case ComponentType.Funnel:
                 return 'Funnel';
             case ComponentType.Label:

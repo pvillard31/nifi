@@ -40,7 +40,7 @@ public class PythonBundle {
             .coordinate(PYTHON_BUNDLE_COORDINATE)
             .build();
 
-        return new Bundle(systemBundleDetails, classLoader);
+        return new Bundle(systemBundleDetails, classLoader, false);
     }
 
     public static boolean isPythonCoordinate(final BundleCoordinate coordinate) {

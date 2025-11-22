@@ -165,7 +165,7 @@ public class StandardVersionedComponentSynchronizerTest {
     private final ArgumentCaptor<Map<String, String>> propertiesCaptor = ArgumentCaptor.captor();
 
     private final Set<String> queuesWithData = Collections.synchronizedSet(new HashSet<>());
-    private final Bundle bundle = new Bundle("group", "artifact", "version 1.0");
+    private final Bundle bundle = new Bundle("group", "artifact", "version 1.0", false);
 
     @BeforeEach
     public void setup() {
@@ -1424,7 +1424,7 @@ public class StandardVersionedComponentSynchronizerTest {
         versionedService.setProperties(Collections.singletonMap("abc", "123"));
         versionedService.setPosition(new Position(0D, 0D));
         versionedService.setType("ControllerServiceImpl");
-        versionedService.setBundle(new Bundle(bundleCoordinate.getGroup(), bundleCoordinate.getId(), bundleCoordinate.getVersion()));
+        versionedService.setBundle(new Bundle(bundleCoordinate.getGroup(), bundleCoordinate.getId(), bundleCoordinate.getVersion(), false));
 
         return versionedService;
     }

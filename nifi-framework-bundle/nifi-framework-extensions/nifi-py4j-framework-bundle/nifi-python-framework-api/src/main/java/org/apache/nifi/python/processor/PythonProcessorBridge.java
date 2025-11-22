@@ -17,7 +17,7 @@
 
 package org.apache.nifi.python.processor;
 
-import org.apache.nifi.components.AsyncLoadedProcessor.LoadState;
+import org.apache.nifi.components.LoadState;
 import org.apache.nifi.python.PythonController;
 
 import java.util.Optional;

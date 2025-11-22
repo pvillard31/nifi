@@ -333,7 +333,7 @@ public class NiFiClientUtil {
     }
 
     public BundleDTO getTestBundle() {
-        return new BundleDTO(NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+        return new BundleDTO(NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion, false);
     }
 
     public ReportingTaskEntity createReportingTask(final String type) throws NiFiClientException, IOException {
@@ -1964,7 +1964,7 @@ public class NiFiClientUtil {
     }
 
     public FlowRegistryClientEntity createFlowRegistryClient(final String name) throws NiFiClientException, IOException {
-        final BundleDTO bundleDto = new BundleDTO(NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+        final BundleDTO bundleDto = new BundleDTO(NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion, false);
         final FlowRegistryClientDTO clientDto = new FlowRegistryClientDTO();
         clientDto.setBundle(bundleDto);
         clientDto.setName(name);

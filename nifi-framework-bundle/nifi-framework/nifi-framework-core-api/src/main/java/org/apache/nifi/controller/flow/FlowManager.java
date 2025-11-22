@@ -38,6 +38,7 @@ import org.apache.nifi.parameter.Parameter;
 import org.apache.nifi.parameter.ParameterContext;
 import org.apache.nifi.parameter.ParameterContextManager;
 import org.apache.nifi.parameter.ParameterProviderConfiguration;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.validation.RuleViolationsManager;
 import org.apache.nifi.web.api.dto.FlowSnippetDTO;
@@ -105,6 +106,16 @@ public interface FlowManager extends ParameterProviderLookup {
      * @return an optional containing the public output port with the given name, or empty if one does not exist
      */
     Optional<Port> getPublicOutputPort(String name);
+
+    /**
+     * Queue installation of a remote bundle using the underlying controller.
+     * Default implementation throws UnsupportedOperationException for implementations that do not support it.
+     *
+     * @param bundleCoordinate bundle to install
+     */
+    default void installRemoteBundle(BundleCoordinate bundleCoordinate) {
+        throw new UnsupportedOperationException("Remote bundle install not supported by this FlowManager implementation");
+    }
 
     /**
      * Creates a new Remote Process Group with the given ID that points to the given URI
@@ -335,6 +346,15 @@ public interface FlowManager extends ParameterProviderLookup {
     void removeFlowRegistryClient(FlowRegistryClientNode clientNode);
 
     Set<FlowRegistryClientNode> getAllFlowRegistryClients();
+
+    ExtensionRegistryClientNode createExtensionRegistryClient(
+            String type, String id, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls, boolean firstTimeAdded, boolean registerLogObserver, String classloaderIsolationKey);
+
+    ExtensionRegistryClientNode getExtensionRegistryClient(String id);
+
+    void removeExtensionRegistryClient(ExtensionRegistryClientNode clientNode);
+
+    Set<ExtensionRegistryClientNode> getAllExtensionRegistryClients();
 
     Set<ControllerServiceNode> getAllControllerServices();
 

@@ -45,10 +45,15 @@ import org.apache.nifi.toolkit.cli.impl.command.nifi.flow.ImportReportingTasks;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.flow.StartReportingTasks;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.flow.StopReportingTasks;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.flow.UpdateControllerConfiguration;
+import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.CreateExtensionRegistryClient;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.DeleteNar;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.DownloadNar;
+import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.GetExtensionRegistryClientId;
+import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.ListExtensionRegistryClients;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.ListNarComponentTypes;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.ListNars;
+import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.SetExtensionRegistryClientProperty;
+import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.UpdateExtensionRegistryClient;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nar.UploadNar;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nodes.ConnectNode;
 import org.apache.nifi.toolkit.cli.impl.command.nifi.nodes.DeleteNode;
@@ -248,6 +253,11 @@ public class NiFiCommandGroup extends AbstractCommandGroup {
         commands.add(new DeleteAsset());
         commands.add(new AddAssetReference());
         commands.add(new RemoveAssetReference());
+        commands.add(new ListExtensionRegistryClients());
+        commands.add(new CreateExtensionRegistryClient());
+        commands.add(new UpdateExtensionRegistryClient());
+        commands.add(new SetExtensionRegistryClientProperty());
+        commands.add(new GetExtensionRegistryClientId());
         return new ArrayList<>(commands);
     }
 }

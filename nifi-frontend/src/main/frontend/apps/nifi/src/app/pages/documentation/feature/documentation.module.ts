@@ -36,6 +36,7 @@ import { ReportingTaskDefinitionEffects } from '../state/reporting-task-definiti
 import { ParameterProviderDefinitionEffects } from '../state/parameter-provider-definition/parameter-provider-definition.effects';
 import { FlowAnalysisRuleDefinitionEffects } from '../state/flow-analysis-rule-definition/flow-analysis-rule-definition.effects';
 import { FlowRegistryClientDefinitionEffects } from '../state/flow-registry-client-definition/flow-registry-client-definition.effects';
+import { ExtensionRegistryClientDefinitionEffects } from '../state/extension-registry-client-definition/extension-registry-client-definition.effects';
 
 @NgModule({
     declarations: [Documentation],
@@ -49,6 +50,7 @@ import { FlowRegistryClientDefinitionEffects } from '../state/flow-registry-clie
             ControllerServiceDefinitionEffects,
             ReportingTaskDefinitionEffects,
             FlowRegistryClientDefinitionEffects,
+            ExtensionRegistryClientDefinitionEffects,
             ParameterProviderDefinitionEffects,
             FlowAnalysisRuleDefinitionEffects,
             AdditionalDetailsEffects,

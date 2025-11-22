@@ -27,6 +27,14 @@
                 height: 14px;
                 margin-right: 2px;
             }
+
+            .remote-col,
+            .mat-column-remote {
+                width: 6ch;
+                min-width: 6ch;
+                max-width: 6ch;
+                text-align: center;
+            }
         }
     }
 

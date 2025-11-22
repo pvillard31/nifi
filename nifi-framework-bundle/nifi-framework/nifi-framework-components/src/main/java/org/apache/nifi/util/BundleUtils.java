@@ -84,7 +84,11 @@ public final class BundleUtils {
         }
 
         final BundleCoordinate coordinate = new BundleCoordinate(bundleDTO.getGroup(), bundleDTO.getArtifact(), bundleDTO.getVersion());
+
         final Bundle bundle = extensionManager.getBundle(coordinate);
+        if (bundle == null && extensionManager.isRemoteBundle(coordinate)) {
+            return coordinate;
+        }
 
         if (bundle == null) {
             if (allowCompatibleBundle) {

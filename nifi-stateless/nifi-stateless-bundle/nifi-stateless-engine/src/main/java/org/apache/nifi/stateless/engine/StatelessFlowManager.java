@@ -67,6 +67,7 @@ import org.apache.nifi.nar.NarCloseable;
 import org.apache.nifi.parameter.ParameterContextManager;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.StandardProcessContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.StandardRemoteProcessGroup;
 import org.apache.nifi.reporting.BulletinRepository;
@@ -75,6 +76,8 @@ import org.apache.nifi.util.ReflectionUtils;
 import org.apache.nifi.web.api.dto.FlowSnippetDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLContext;
 
 import java.net.URL;
 import java.util.ArrayList;
@@ -85,7 +88,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import javax.net.ssl.SSLContext;
 
 import static java.util.Objects.requireNonNull;
 
@@ -458,5 +460,16 @@ public class StatelessFlowManager extends AbstractFlowManager implements FlowMan
         final String classloaderIsolationKey
     ) {
         return null;
+    }
+
+    @Override
+    public ExtensionRegistryClientNode createExtensionRegistryClient(String type, String id, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls, boolean firstTimeAdded,
+            boolean registerLogObserver, String classloaderIsolationKey) {
+        throw new UnsupportedOperationException("Creating a Flow Registry Client is not supported in Stateless NiFi");
+    }
+
+    @Override
+    public void removeExtensionRegistryClient(ExtensionRegistryClientNode clientNode) {
+        throw new UnsupportedOperationException("Removing Extension Registry Client is not supported in Stateless NiFi");
     }
 }

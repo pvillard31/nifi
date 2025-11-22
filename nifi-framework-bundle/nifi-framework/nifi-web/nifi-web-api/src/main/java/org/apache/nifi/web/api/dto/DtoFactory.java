@@ -151,6 +151,8 @@ import org.apache.nifi.provenance.lineage.ComputeLineageSubmission;
 import org.apache.nifi.provenance.lineage.LineageEdge;
 import org.apache.nifi.provenance.lineage.LineageNode;
 import org.apache.nifi.provenance.lineage.ProvenanceEventLineageNode;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryBranch;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
@@ -1946,16 +1948,25 @@ public final class DtoFactory {
            propertyDescriptors = node.getParameterProvider().getPropertyDescriptors();
            validationErrors = node.getValidationErrors();
            processGroupId = null;
-       } else if (component instanceof FlowRegistryClientNode) {
-           final FlowRegistryClientNode node = (FlowRegistryClientNode) component;
+        } else if (component instanceof FlowRegistryClientNode) {
+            final FlowRegistryClientNode node = (FlowRegistryClientNode) component;
 
-           dto.setType(node.getComponentType());
-           dto.setReferenceType(FlowRegistryClient.class.getSimpleName());
+            dto.setType(node.getComponentType());
+            dto.setReferenceType(FlowRegistryClient.class.getSimpleName());
 
-           propertyDescriptors = node.getComponent().getPropertyDescriptors();
-           validationErrors = node.getValidationErrors();
-           processGroupId = null;
-       }
+            propertyDescriptors = node.getComponent().getPropertyDescriptors();
+            validationErrors = node.getValidationErrors();
+            processGroupId = null;
+        } else if (component instanceof ExtensionRegistryClientNode) {
+            final ExtensionRegistryClientNode node = (ExtensionRegistryClientNode) component;
+
+            dto.setType(node.getComponentType());
+            dto.setReferenceType(ExtensionRegistryClient.class.getSimpleName());
+
+            propertyDescriptors = node.getComponent().getPropertyDescriptors();
+            validationErrors = node.getValidationErrors();
+            processGroupId = null;
+        }
 
        // ensure descriptors is non null
        if (propertyDescriptors == null) {
@@ -3306,7 +3317,26 @@ public final class DtoFactory {
        bundleDto.setVersion(extensionDefinition.getVersion());
        dto.setBundle(bundleDto);
 
-       dto.setControllerServiceApis(Collections.emptyList());
+       if (!extensionDefinition.getProvidedServiceAPIs().isEmpty()) {
+           final List<ControllerServiceApiDTO> apis = extensionDefinition.getProvidedServiceAPIs().stream()
+                   .map(api -> {
+                       final ControllerServiceApiDTO apiDto = new ControllerServiceApiDTO();
+                       apiDto.setType(api.getClassName());
+
+                       if (api.getGroup() != null && api.getArtifact() != null && api.getVersion() != null) {
+                           final BundleDTO apiBundle = new BundleDTO();
+                           apiBundle.setGroup(api.getGroup());
+                           apiBundle.setArtifact(api.getArtifact());
+                           apiBundle.setVersion(api.getVersion());
+                           apiDto.setBundle(apiBundle);
+                       }
+                       return apiDto;
+                   })
+                   .toList();
+           dto.setControllerServiceApis(apis);
+       } else {
+           dto.setControllerServiceApis(Collections.emptyList());
+       }
        dto.setDescription(extensionDefinition.getDescription());
        dto.setRestricted(false);
        dto.setUsageRestriction(null);
@@ -3339,8 +3369,14 @@ public final class DtoFactory {
    public Set<DocumentedTypeDTO> fromDocumentedTypes(final Set<ExtensionDefinition> extensionDefinitions, final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter) {
        final Map<Class, Bundle> classBundles = new HashMap<>();
        final Set<ExtensionDefinition> pythonExtensionDefinitions = new HashSet<>();
+       final Set<ExtensionDefinition> remoteExtensionDefinitions = new HashSet<>();
 
        for (final ExtensionDefinition extensionDefinition : extensionDefinitions) {
+           if (extensionDefinition.getBundle().isRemote()) {
+               remoteExtensionDefinitions.add(extensionDefinition);
+               continue;
+           }
+
            if (PythonBundle.isPythonCoordinate(extensionDefinition.getBundle().getBundleDetails().getCoordinate())) {
                pythonExtensionDefinitions.add(extensionDefinition);
                continue;
@@ -3365,7 +3401,56 @@ public final class DtoFactory {
            optionalDto.ifPresent(documentedTypes::add);
        }
 
+       for (final ExtensionDefinition extensionDefinition : remoteExtensionDefinitions) {
+           final Optional<DocumentedTypeDTO> optionalDto = createDocumentedTypeFromRemoteExtension(extensionDefinition, bundleGroupFilter, bundleArtifactFilter, typeFilter);
+           optionalDto.ifPresent(documentedTypes::add);
+       }
+
        return documentedTypes;
+   }
+
+   /**
+    * Gets the DocumentedTypeDTOs for the given remote ExtensionDefinition
+    *
+    * @param extensionDefinition the extension definition
+    * @param bundleGroupFilter if specified, must be member of bundle group
+    * @param bundleArtifactFilter if specified, must be member of bundle artifact
+    * @param typeFilter if specified, type must match
+    * @return dtos
+    */
+   private Optional<DocumentedTypeDTO> createDocumentedTypeFromRemoteExtension(final ExtensionDefinition extensionDefinition, final String bundleGroupFilter,
+                                                                               final String bundleArtifactFilter, final String typeFilter) {
+       // only provide documented type if it meets the criteria
+       final BundleCoordinate coordinate = extensionDefinition.getBundle().getBundleDetails().getCoordinate();
+       if (bundleGroupFilter != null && !bundleGroupFilter.equals(coordinate.getGroup())) {
+           return Optional.empty();
+       }
+       if (bundleArtifactFilter != null && !bundleArtifactFilter.equals(coordinate.getId())) {
+           return Optional.empty();
+       }
+       if (typeFilter != null && !typeFilter.equals(extensionDefinition.getImplementationClassName())) {
+           return Optional.empty();
+       }
+
+       final DocumentedTypeDTO dto = new DocumentedTypeDTO();
+       dto.setType(extensionDefinition.getImplementationClassName());
+
+       final BundleDTO bundleDto = new BundleDTO();
+       bundleDto.setGroup(coordinate.getGroup());
+       bundleDto.setArtifact(coordinate.getId());
+       bundleDto.setVersion(extensionDefinition.getVersion());
+       bundleDto.setRemote(true);
+       dto.setBundle(bundleDto);
+
+       dto.setControllerServiceApis(Collections.emptyList());
+       dto.setDescription(extensionDefinition.getDescription());
+       dto.setRestricted(false);
+       dto.setUsageRestriction(null);
+       dto.setExplicitRestrictions(Collections.emptySet());
+       dto.setDeprecationReason(null);
+       dto.setTags(new HashSet<>(extensionDefinition.getTags()));
+
+       return Optional.of(dto);
    }
 
 
@@ -5059,6 +5144,72 @@ public final class DtoFactory {
 
        return dto;
    }
+
+    public ExtensionRegistryClientDTO createExtensionRegistryDto(final ExtensionRegistryClientNode extensionRegistryClientNode) {
+        final BundleCoordinate bundleCoordinate = extensionRegistryClientNode.getBundleCoordinate();
+        final List<Bundle> compatibleBundles = extensionManager.getBundles(extensionRegistryClientNode.getCanonicalClassName()).stream().filter(bundle -> {
+            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
+            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
+        }).toList();
+
+        final ExtensionRegistryClientDTO dto = new ExtensionRegistryClientDTO();
+        dto.setId(extensionRegistryClientNode.getIdentifier());
+        dto.setName(extensionRegistryClientNode.getName());
+        dto.setDescription(extensionRegistryClientNode.getDescription());
+        dto.setType(extensionRegistryClientNode.getCanonicalClassName());
+        dto.setBundle(createBundleDto(bundleCoordinate));
+        dto.setAnnotationData(extensionRegistryClientNode.getAnnotationData());
+        dto.setSupportsSensitiveDynamicProperties(extensionRegistryClientNode.isSupportsSensitiveDynamicProperties());
+        dto.setRestricted(extensionRegistryClientNode.isRestricted());
+        dto.setDeprecated(extensionRegistryClientNode.isDeprecated());
+        dto.setExtensionMissing(extensionRegistryClientNode.isExtensionMissing());
+        dto.setMultipleVersionsAvailable(extensionRegistryClientNode.isExtensionMissing() ? !compatibleBundles.isEmpty() : compatibleBundles.size() > 1);
+
+        final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>((o1, o2) -> Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName()));
+        sortedProperties.putAll(extensionRegistryClientNode.getRawPropertyValues());
+
+        final Map<PropertyDescriptor, String> orderedProperties = new LinkedHashMap<>();
+        final List<PropertyDescriptor> descriptors = extensionRegistryClientNode.getPropertyDescriptors();
+        if (descriptors != null && !descriptors.isEmpty()) {
+            for (final PropertyDescriptor descriptor : descriptors) {
+                orderedProperties.put(descriptor, null);
+            }
+        }
+        orderedProperties.putAll(sortedProperties);
+
+        dto.setDescriptors(new LinkedHashMap<>());
+        dto.setProperties(new LinkedHashMap<>());
+
+        for (final Map.Entry<PropertyDescriptor, String> entry : orderedProperties.entrySet()) {
+            final PropertyDescriptor descriptor = entry.getKey();
+
+            dto.getDescriptors().put(descriptor.getName(), createPropertyDescriptorDto(descriptor, null));
+
+            String propertyValue = entry.getValue();
+            if (propertyValue != null && descriptor.isSensitive()) {
+                propertyValue = SENSITIVE_VALUE_MASK;
+            } else if (propertyValue == null && descriptor.getDefaultValue() != null) {
+                propertyValue = descriptor.getDefaultValue();
+            }
+
+            dto.getProperties().put(descriptor.getName(), propertyValue);
+        }
+
+        final ValidationStatus validationStatus = extensionRegistryClientNode.getValidationStatus(1, TimeUnit.MILLISECONDS);
+        dto.setValidationStatus(validationStatus.name());
+
+        final Collection<ValidationResult> validationErrors = extensionRegistryClientNode.getValidationErrors();
+        if (validationErrors != null && !validationErrors.isEmpty()) {
+            final List<String> errors = new ArrayList<>();
+            for (final ValidationResult validationResult : validationErrors) {
+                errors.add(validationResult.toString());
+            }
+
+            dto.setValidationErrors(errors);
+        }
+
+        return dto;
+    }
 
    public FlowAnalysisRuleDTO createFlowAnalysisRuleDto(FlowAnalysisRuleNode flowAnalysisRuleNode) {
        final BundleCoordinate bundleCoordinate = flowAnalysisRuleNode.getBundleCoordinate();

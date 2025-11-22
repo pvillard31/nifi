@@ -27,6 +27,8 @@ import { reportingTasksFeatureKey, ReportingTasksState } from './reporting-tasks
 import { reportingTasksReducer } from './reporting-tasks/reporting-tasks.reducer';
 import { registryClientsFeatureKey, RegistryClientsState } from './registry-clients';
 import { registryClientsReducer } from './registry-clients/registry-clients.reducer';
+import { extensionRegistryClientsFeatureKey, ExtensionRegistryClientsState } from './extension-registry-clients';
+import { extensionRegistryClientsReducer } from './extension-registry-clients/extension-registry-clients.reducer';
 import { flowAnalysisRulesFeatureKey, FlowAnalysisRulesState } from './flow-analysis-rules';
 import { flowAnalysisRulesReducer } from './flow-analysis-rules/flow-analysis-rules.reducer';
 import { parameterProvidersFeatureKey, ParameterProvidersState } from './parameter-providers';
@@ -39,6 +41,7 @@ export interface SettingsState {
     [managementControllerServicesFeatureKey]: ManagementControllerServicesState;
     [reportingTasksFeatureKey]: ReportingTasksState;
     [flowAnalysisRulesFeatureKey]: FlowAnalysisRulesState;
+    [extensionRegistryClientsFeatureKey]: ExtensionRegistryClientsState;
     [registryClientsFeatureKey]: RegistryClientsState;
     [parameterProvidersFeatureKey]: ParameterProvidersState;
 }
@@ -49,6 +52,7 @@ export function reducers(state: SettingsState | undefined, action: Action) {
         [managementControllerServicesFeatureKey]: managementControllerServicesReducer,
         [reportingTasksFeatureKey]: reportingTasksReducer,
         [flowAnalysisRulesFeatureKey]: flowAnalysisRulesReducer,
+        [extensionRegistryClientsFeatureKey]: extensionRegistryClientsReducer,
         [registryClientsFeatureKey]: registryClientsReducer,
         [parameterProvidersFeatureKey]: parameterProvidersReducer
     })(state, action);

@@ -14,29 +14,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.nifi.mock;
 
-package org.apache.nifi.components;
+import org.apache.nifi.logging.ComponentLog;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientInitializationContext;
 
-import org.apache.nifi.processor.Processor;
+import javax.net.ssl.SSLContext;
 
-public interface AsyncLoadedProcessor extends Processor {
-    default boolean isLoaded() {
-        return getState() == LoadState.FINISHED_LOADING;
+import java.util.Optional;
+
+public class MockExtensionRegistryClientInitializationContext implements ExtensionRegistryClientInitializationContext {
+    @Override
+    public String getIdentifier() {
+        return "mock-extension-registry-client";
     }
 
-    LoadState getState();
+    @Override
+    public ComponentLog getLogger() {
+        return new MockComponentLogger();
+    }
 
-    enum LoadState {
-        INITIALIZING_ENVIRONMENT,
-
-        DOWNLOADING_DEPENDENCIES,
-
-        LOADING_PROCESSOR_CODE,
-
-        DEPENDENCY_DOWNLOAD_FAILED,
-
-        LOADING_PROCESSOR_CODE_FAILED,
-
-        FINISHED_LOADING
+    @Override
+    public Optional<SSLContext> getSystemSslContext() {
+        return Optional.empty();
     }
 }

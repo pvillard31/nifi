@@ -31,6 +31,7 @@ export interface LoadExtensionTypesForSettingsResponse {
     controllerServiceTypes: DocumentedType[];
     reportingTaskTypes: DocumentedType[];
     registryClientTypes: DocumentedType[];
+    extensionRegistryClientTypes: DocumentedType[];
     flowAnalysisRuleTypes: DocumentedType[];
     parameterProviderTypes: DocumentedType[];
 }
@@ -48,6 +49,7 @@ export interface LoadExtensionTypesForDocumentationResponse {
     controllerServiceTypes: DocumentedType[];
     reportingTaskTypes: DocumentedType[];
     registryClientTypes: DocumentedType[];
+    extensionRegistryClientTypes: DocumentedType[];
     flowAnalysisRuleTypes: DocumentedType[];
     parameterProviderTypes: DocumentedType[];
 }
@@ -58,6 +60,7 @@ export interface ExtensionTypesState {
     prioritizerTypes: DocumentedType[];
     reportingTaskTypes: DocumentedType[];
     registryClientTypes: DocumentedType[];
+    extensionRegistryClientTypes: DocumentedType[];
     flowAnalysisRuleTypes: DocumentedType[];
     parameterProviderTypes: DocumentedType[];
     status: ExtensionTypesLoadingStatus;

@@ -95,6 +95,6 @@ public class FlowRegistryUtils {
     }
 
     public static BundleDTO createBundleDto(final Bundle bundle) {
-        return new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+        return new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), bundle.isRemote());
     }
 }

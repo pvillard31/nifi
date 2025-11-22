@@ -174,6 +174,7 @@ public class TestStandardControllerServiceProvider {
             .reloadComponent(Mockito.mock(ReloadComponent.class))
             .stateManagerProvider(Mockito.mock(StateManagerProvider.class))
             .extensionManager(extensionManager)
+            .flowController(Mockito.mock(FlowController.class))
             .buildControllerService();
 
         serviceProvider.onControllerServiceAdded(serviceNode);

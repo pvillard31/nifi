@@ -28,6 +28,8 @@ import org.apache.nifi.web.api.dto.RevisionDTO;
 import org.apache.nifi.web.api.entity.ClusterEntity;
 import org.apache.nifi.web.api.entity.ControllerConfigurationEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientsEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleRunStatusEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRulesEntity;
@@ -569,4 +571,62 @@ public class JerseyControllerClient extends AbstractJerseyClient implements Cont
             }
         });
     }
+
+    @Override
+    public ExtensionRegistryClientsEntity getExtensionRegistryClients() throws NiFiClientException, IOException {
+        return executeAction("Error retrieving extension registry clients", () -> {
+            final WebTarget target = controllerTarget.path("extension-registry-clients");
+            return getRequestBuilder(target).get(ExtensionRegistryClientsEntity.class);
+        });
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity getExtensionRegistryClient(String id) throws NiFiClientException, IOException {
+        if (StringUtils.isBlank(id)) {
+            throw new IllegalArgumentException("Extension registry client id cannot be null");
+        }
+
+        final WebTarget target = controllerTarget
+                .path("extension-registry-clients/{id}")
+                .resolveTemplate("id", id);
+
+        return getRequestBuilder(target).get(ExtensionRegistryClientEntity.class);
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity createExtensionRegistryClient(ExtensionRegistryClientEntity clientEntity) throws NiFiClientException, IOException {
+        if (clientEntity == null) {
+            throw new IllegalArgumentException("Extension registry client entity cannot be null");
+        }
+
+        return executeAction("Error creating extension registry client", () -> {
+            final WebTarget target = controllerTarget.path("extension-registry-clients");
+
+            return getRequestBuilder(target).post(
+                    Entity.entity(clientEntity, MediaType.APPLICATION_JSON),
+                    ExtensionRegistryClientEntity.class);
+        });
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity updateExtensionRegistryClient(ExtensionRegistryClientEntity extensionRegistryClientEntity) throws NiFiClientException, IOException {
+        if (extensionRegistryClientEntity == null) {
+            throw new IllegalArgumentException("Extension registry client entity cannot be null");
+        }
+
+        if (StringUtils.isBlank(extensionRegistryClientEntity.getId())) {
+            throw new IllegalArgumentException("Extension registry client entity must contain an id");
+        }
+
+        return executeAction("Error updating extension registry client", () -> {
+            final WebTarget target = controllerTarget
+                    .path("extension-registry-clients/{id}")
+                    .resolveTemplate("id", extensionRegistryClientEntity.getId());
+
+            return getRequestBuilder(target).put(
+                    Entity.entity(extensionRegistryClientEntity, MediaType.APPLICATION_JSON),
+                    ExtensionRegistryClientEntity.class);
+        });
+    }
+
 }

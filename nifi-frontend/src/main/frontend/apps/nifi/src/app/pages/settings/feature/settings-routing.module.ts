@@ -23,6 +23,7 @@ import { ManagementControllerServices } from '../ui/management-controller-servic
 import { ReportingTasks } from '../ui/reporting-tasks/reporting-tasks.component';
 import { FlowAnalysisRules } from '../ui/flow-analysis-rules/flow-analysis-rules.component';
 import { RegistryClients } from '../ui/registry-clients/registry-clients.component';
+import { ExtensionRegistryClients } from '../ui/extension-registry-clients/extension-registry-clients.component';
 import { ParameterProviders } from '../ui/parameter-providers/parameter-providers.component';
 import { authorizationGuard } from '../../../service/guard/authorization.guard';
 import { CurrentUser } from '../../../state/current-user';
@@ -113,6 +114,22 @@ const routes: Routes = [
                             {
                                 path: 'edit',
                                 component: RegistryClients
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                path: 'extension-registry-clients',
+                component: ExtensionRegistryClients,
+                children: [
+                    {
+                        path: ':id',
+                        component: ExtensionRegistryClients,
+                        children: [
+                            {
+                                path: 'edit',
+                                component: ExtensionRegistryClients
                             }
                         ]
                     }

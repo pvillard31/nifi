@@ -199,6 +199,7 @@ public class TestStandardProcessScheduler {
                 .reloadComponent(Mockito.mock(ReloadComponent.class))
                 .stateManagerProvider(Mockito.mock(StateManagerProvider.class))
                 .extensionManager(extensionManager)
+                .flowController(controller)
                 .buildControllerService();
 
             serviceProvider.onControllerServiceAdded(serviceNode);

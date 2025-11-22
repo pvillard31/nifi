@@ -28,6 +28,11 @@ import {
     FlowRegistryClientDefinitionState
 } from './flow-registry-client-definition';
 import { flowRegistryClientDefinitionReducer } from './flow-registry-client-definition/flow-registry-client-definition.reducer';
+import {
+    extensionRegistryClientDefinitionFeatureKey,
+    ExtensionRegistryClientDefinitionState
+} from './extension-registry-client-definition';
+import { extensionRegistryClientDefinitionReducer } from './extension-registry-client-definition/extension-registry-client-definition.reducer';
 import { additionalDetailsFeatureKey, AdditionalDetailsState } from './additional-details';
 import { additionalDetailsReducer } from './additional-details/additional-details.reducer';
 import { externalDocumentationFeatureKey, ExternalDocumentationState } from './external-documentation';
@@ -194,6 +199,7 @@ export interface DocumentationState {
     [controllerServiceDefinitionFeatureKey]: ControllerServiceDefinitionState;
     [reportingTaskDefinitionFeatureKey]: ReportingTaskDefinitionState;
     [flowRegistryClientDefinitionFeatureKey]: FlowRegistryClientDefinitionState;
+    [extensionRegistryClientDefinitionFeatureKey]: ExtensionRegistryClientDefinitionState;
     [parameterProviderDefinitionFeatureKey]: ParameterProviderDefinitionState;
     [flowAnalysisRuleDefinitionFeatureKey]: FlowAnalysisRuleDefinitionState;
     [additionalDetailsFeatureKey]: AdditionalDetailsState;
@@ -206,6 +212,7 @@ export function reducers(state: DocumentationState | undefined, action: Action) 
         [controllerServiceDefinitionFeatureKey]: controllerServiceDefinitionReducer,
         [reportingTaskDefinitionFeatureKey]: reportingTaskDefinitionReducer,
         [flowRegistryClientDefinitionFeatureKey]: flowRegistryClientDefinitionReducer,
+        [extensionRegistryClientDefinitionFeatureKey]: extensionRegistryClientDefinitionReducer,
         [parameterProviderDefinitionFeatureKey]: parameterProviderDefinitionReducer,
         [flowAnalysisRuleDefinitionFeatureKey]: flowAnalysisRuleDefinitionReducer,
         [additionalDetailsFeatureKey]: additionalDetailsReducer,

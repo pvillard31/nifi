@@ -24,12 +24,13 @@ import java.util.Objects;
 public class Bundle {
 
     private final BundleDetails bundleDetails;
-
     private final ClassLoader classLoader;
+    private final boolean isRemote;
 
-    public Bundle(final BundleDetails bundleDetails, final ClassLoader classLoader) {
+    public Bundle(final BundleDetails bundleDetails, final ClassLoader classLoader, final boolean isRemote) {
         this.bundleDetails = bundleDetails;
         this.classLoader = classLoader;
+        this.isRemote = isRemote;
 
         if (this.bundleDetails == null) {
             throw new IllegalStateException("BundleDetails cannot be null");
@@ -46,6 +47,10 @@ public class Bundle {
 
     public ClassLoader getClassLoader() {
         return classLoader;
+    }
+
+    public boolean isRemote() {
+        return isRemote;
     }
 
     @Override

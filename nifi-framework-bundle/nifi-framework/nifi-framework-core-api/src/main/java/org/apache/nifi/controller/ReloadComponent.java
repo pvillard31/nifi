@@ -19,11 +19,13 @@ package org.apache.nifi.controller;
 import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.controller.exception.ControllerServiceInstantiationException;
 import org.apache.nifi.controller.exception.ProcessorInstantiationException;
+import org.apache.nifi.controller.extension.ExtensionRegistryClientInstantiationException;
 import org.apache.nifi.controller.flowanalysis.FlowAnalysisRuleInstantiationException;
 import org.apache.nifi.controller.parameter.ParameterProviderInstantiationException;
 import org.apache.nifi.controller.flowrepository.FlowRepositoryClientInstantiationException;
 import org.apache.nifi.controller.reporting.ReportingTaskInstantiationException;
 import org.apache.nifi.controller.service.ControllerServiceNode;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 
 import java.net.URL;
@@ -104,4 +106,16 @@ public interface ReloadComponent {
      */
     void reload(FlowRegistryClientNode existingNode, String newType, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls)
             throws FlowRepositoryClientInstantiationException;
+
+    /**
+     * Changes the underlying ExtensionRegistryClient held by the node to an instance of the new type.
+     *
+     * @param existingNode the ExtensionRegistryClientNode being updated
+     * @param newType the fully qualified class name of the new type
+     * @param bundleCoordinate the bundle coordinate of the new type
+     * @param additionalUrls additional URLs to be added to the instance class loader of the new component
+     * @throws ReportingTaskInstantiationException if unable to create an instance of the new type
+     */
+    void reload(ExtensionRegistryClientNode existingNode, String newType, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls)
+            throws ExtensionRegistryClientInstantiationException;
 }

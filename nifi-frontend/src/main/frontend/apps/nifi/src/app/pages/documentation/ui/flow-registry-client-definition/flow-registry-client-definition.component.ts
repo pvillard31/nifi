@@ -33,6 +33,7 @@ import { selectFlowRegistryClientDefinitionState } from '../../state/flow-regist
 
 @Component({
     selector: 'flow-registry-client-definition',
+    standalone: true,
     imports: [NgxSkeletonLoaderModule, ConfigurableExtensionDefinitionComponent],
     templateUrl: './flow-registry-client-definition.component.html',
     styleUrl: './flow-registry-client-definition.component.scss'

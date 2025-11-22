@@ -33,6 +33,7 @@ public class ComponentManifest implements Serializable {
     private List<ParameterProviderDefinition> parameterProviders;
     private List<FlowRegistryClientDefinition> flowRegistryClients;
     private List<FlowAnalysisRuleDefinition> flowAnalysisRules;
+    private List<ExtensionRegistryClientDefinition> extensionRegistryClients;
 
     @Schema(description = "Public interfaces defined in this bundle")
     public List<DefinedType> getApis() {
@@ -95,6 +96,15 @@ public class ComponentManifest implements Serializable {
 
     public void setFlowRegistryClients(List<FlowRegistryClientDefinition> flowRegistryClients) {
         this.flowRegistryClients = flowRegistryClients;
+    }
+
+    @Schema(description = "Extension Registry Clients provided in this bundle")
+    public List<ExtensionRegistryClientDefinition> getExtensionRegistryClients() {
+        return (extensionRegistryClients != null ? Collections.unmodifiableList(extensionRegistryClients) : null);
+    }
+
+    public void setExtensionRegistryClients(List<ExtensionRegistryClientDefinition> extensionRegistryClients) {
+        this.extensionRegistryClients = extensionRegistryClients;
     }
 
 }

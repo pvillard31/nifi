@@ -338,7 +338,7 @@ class TestProcessorAuditor {
                 .coordinate(BUNDLE_COORDINATE)
                 .workingDir(new File("."))
                 .build();
-        return new Bundle(bundleDetails, this.getClass().getClassLoader());
+        return new Bundle(bundleDetails, this.getClass().getClassLoader(), false);
     }
 
     @Configuration

@@ -18,15 +18,15 @@
 package org.apache.nifi.py4j;
 
 import org.apache.commons.codec.digest.DigestUtils;
-
-import org.apache.nifi.components.AsyncLoadedProcessor;
-import org.apache.nifi.components.AsyncLoadedProcessor.LoadState;
+import org.apache.nifi.components.AsyncLoadedComponent;
+import org.apache.nifi.components.LoadState;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ControllerService;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.json.JsonRecordSetWriter;
 import org.apache.nifi.json.JsonTreeReader;
+import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.python.ControllerServiceTypeLookup;
 import org.apache.nifi.python.PythonBridge;
@@ -452,27 +452,6 @@ public class PythonControllerInteractionIT {
     }
 
     @Test
-    public void testRecordTransformWithDynamicProperties() throws InitializationException {
-        // Create a SetRecordField Processor
-        final TestRunner runner = createRecordTransformRunner("SetRecordField");
-        runner.setProperty("name", "Jane Doe");
-        runner.setProperty("number", "8");
-
-        // Create a Record to transform and transform it
-        final String json = "[{ \"name\": \"John Doe\" }]";
-        runner.enqueue(json);
-        runner.run();
-        runner.assertTransferCount("original", 1);
-        runner.assertTransferCount("success", 1);
-
-        // Verify the results
-        final MockFlowFile out = runner.getFlowFilesForRelationship("success").get(0);
-        out.assertContentEquals("""
-            [{"name":"Jane Doe","number":"8"}]""");
-    }
-
-
-    @Test
     public void testHashRecordFieldHappyPath() throws InitializationException {
         final TestRunner runner = createRecordTransformRunner("HashRecordField");
         runner.setProperty("Record Path", "my.example");
@@ -538,10 +517,29 @@ public class PythonControllerInteractionIT {
         out.assertContentEquals("[{\"count\":\"" + expectedHash + "\"}]");
     }
 
+    @Test
+    public void testRecordTransformWithDynamicProperties() throws InitializationException {
+        // Create a SetRecordField Processor
+        final TestRunner runner = createRecordTransformRunner("SetRecordField");
+        runner.setProperty("name", "Jane Doe");
+        runner.setProperty("number", "8");
+
+        // Create a Record to transform and transform it
+        final String json = "[{ \"name\": \"John Doe\" }]";
+        runner.enqueue(json);
+        runner.run();
+        runner.assertTransferCount("original", 1);
+        runner.assertTransferCount("success", 1);
+
+        // Verify the results
+        final MockFlowFile out = runner.getFlowFilesForRelationship("success").get(0);
+        out.assertContentEquals("""
+            [{"name":"Jane Doe","number":"8"}]""");
+    }
+
 
     private TestRunner createRecordTransformRunner(final String type) throws InitializationException {
         final TestRunner runner = createProcessor(type);
-        runner.setValidateExpressionUsage(false);
 
         final JsonTreeReader reader = new JsonTreeReader();
         final JsonRecordSetWriter writer = new JsonRecordSetWriter();
@@ -555,7 +553,6 @@ public class PythonControllerInteractionIT {
 
         return runner;
     }
-
 
     @Test
     public void testRecordTransformWithInnerRecord() throws InitializationException {
@@ -574,6 +571,36 @@ public class PythonControllerInteractionIT {
         final MockFlowFile out = runner.getFlowFilesForRelationship("success").get(0);
         out.assertContentEquals("""
             [{"name":"Jane Doe","father":{"name":"John Doe"}}]""");
+    }
+
+
+    @Test
+    public void testConditionalProcessorWithDependencies() {
+        final TestRunner runner = createFlowFileTransform("ConditionalProcessor");
+
+        // Text mode with uppercase dependency
+        runner.setProperty("Output Mode", "text");
+        runner.setProperty("Uppercase", "true");
+        runner.setProperty("Payload Text", "${filename}");
+        runner.enqueue("body", Map.of("filename", "nifi"));
+        runner.run();
+
+        runner.assertTransferCount("success", 1);
+        MockFlowFile textOutput = runner.getFlowFilesForRelationship("success").getFirst();
+        textOutput.assertContentEquals("NIFI");
+        textOutput.assertAttributeEquals("output.mode", "text");
+
+        // Reset and exercise JSON branch (requires JSON Field Name dependency)
+        runner.clearTransferState();
+        runner.setProperty("Output Mode", "json");
+        runner.setProperty("JSON Field Name", "msg");
+        runner.enqueue("body", Map.of("filename", "payload"));
+        runner.run();
+
+        runner.assertTransferCount("success", 1);
+        MockFlowFile jsonOutput = runner.getFlowFilesForRelationship("success").getFirst();
+        jsonOutput.assertContentEquals("{\"msg\": \"payload\"}");
+        jsonOutput.assertAttributeEquals("output.mode", "json");
     }
 
 
@@ -792,10 +819,9 @@ public class PythonControllerInteractionIT {
 
     private TestRunner createProcessor(final String type, final String version) {
         bridge.discoverExtensions(true);
-        final AsyncLoadedProcessor processor = bridge.createProcessor(createId(), type, version, true, true);
+        final AsyncLoadedComponent processor = bridge.createProcessor(createId(), type, version, true, true);
 
-        final TestRunner runner = TestRunners.newTestRunner(processor);
-        runner.setValidateExpressionUsage(false);
+        final TestRunner runner = TestRunners.newTestRunner((Processor) processor);
 
         final long maxInitTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30L);
         while (true) {
@@ -843,35 +869,6 @@ public class PythonControllerInteractionIT {
 
         final MockFlowFile output = runner.getFlowFilesForRelationship(expectedOuputRelationship).get(0);
         output.assertContentEquals(expectedContent);
-    }
-
-    @Test
-    public void testConditionalProcessorWithDependencies() {
-        final TestRunner runner = createFlowFileTransform("ConditionalProcessor");
-
-        // Text mode with uppercase dependency
-        runner.setProperty("Output Mode", "text");
-        runner.setProperty("Uppercase", "true");
-        runner.setProperty("Payload Text", "${filename}");
-        runner.enqueue("body", Map.of("filename", "nifi"));
-        runner.run();
-
-        runner.assertTransferCount("success", 1);
-        MockFlowFile textOutput = runner.getFlowFilesForRelationship("success").getFirst();
-        textOutput.assertContentEquals("NIFI");
-        textOutput.assertAttributeEquals("output.mode", "text");
-
-        // Reset and exercise JSON branch (requires JSON Field Name dependency)
-        runner.clearTransferState();
-        runner.setProperty("Output Mode", "json");
-        runner.setProperty("JSON Field Name", "msg");
-        runner.enqueue("body", Map.of("filename", "payload"));
-        runner.run();
-
-        runner.assertTransferCount("success", 1);
-        MockFlowFile jsonOutput = runner.getFlowFilesForRelationship("success").getFirst();
-        jsonOutput.assertContentEquals("{\"msg\": \"payload\"}");
-        jsonOutput.assertAttributeEquals("output.mode", "json");
     }
 
     private TestRunner createStateManagerTesterProcessor(String methodToTest) {

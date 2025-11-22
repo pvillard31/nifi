@@ -49,6 +49,7 @@ import org.apache.nifi.parameter.ReferenceOnlyParameterContext;
 import org.apache.nifi.parameter.StandardParameterContext;
 import org.apache.nifi.parameter.StandardParameterReferenceManager;
 import org.apache.nifi.python.PythonBridge;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.PublicPort;
 import org.apache.nifi.remote.RemoteGroupPort;
@@ -84,6 +85,7 @@ public abstract class AbstractFlowManager implements FlowManager {
     private final ConcurrentMap<String, FlowAnalysisRuleNode> allFlowAnalysisRules = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ParameterProviderNode> allParameterProviders = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, FlowRegistryClientNode> allFlowRegistryClients = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ExtensionRegistryClientNode> allExtensionRegistryClients = new ConcurrentHashMap<>();
 
     private final FlowFileEventRepository flowFileEventRepository;
     private final ParameterContextManager parameterContextManager;
@@ -619,6 +621,27 @@ public abstract class AbstractFlowManager implements FlowManager {
 
     public void onFlowRegistryClientRemoved(final FlowRegistryClientNode clientNode) {
         allFlowRegistryClients.remove(clientNode.getIdentifier());
+    }
+
+    @Override
+    public ExtensionRegistryClientNode getExtensionRegistryClient(final String id) {
+        if (id == null) {
+            return null;
+        }
+        return allExtensionRegistryClients.get(id);
+    }
+
+    @Override
+    public Set<ExtensionRegistryClientNode> getAllExtensionRegistryClients() {
+        return new HashSet<>(allExtensionRegistryClients.values());
+    }
+
+    public void onExtensionRegistryClientAdded(final ExtensionRegistryClientNode clientNode) {
+        allExtensionRegistryClients.put(clientNode.getIdentifier(), clientNode);
+    }
+
+    public void onExtensionRegistryClientRemoved(final ExtensionRegistryClientNode clientNode) {
+        allExtensionRegistryClients.remove(clientNode.getIdentifier());
     }
 
     @Override

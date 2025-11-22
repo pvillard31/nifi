@@ -95,6 +95,6 @@ public class TestBundleUtils {
             .workingDir(new File("target"))
             .build();
 
-        return new Bundle(bundleDetails, TestBundleUtils.class.getClassLoader());
+        return new Bundle(bundleDetails, TestBundleUtils.class.getClassLoader(), false);
     }
 }

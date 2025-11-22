@@ -37,6 +37,7 @@ public class ExtensionDefinition {
     private final List<String> tags;
     private final String version;
     private final ExtensionRuntime runtime;
+    private final List<ServiceAPI> providedServiceAPIs;
 
     private ExtensionDefinition(final Builder builder) {
         this.implementationClassName = builder.implementationClassName;
@@ -46,6 +47,7 @@ public class ExtensionDefinition {
         this.tags = builder.tags;
         this.version = builder.version;
         this.runtime = builder.runtime;
+        this.providedServiceAPIs = builder.providedServiceAPIs;
     }
 
     /**
@@ -92,6 +94,10 @@ public class ExtensionDefinition {
         return runtime;
     }
 
+    public List<ServiceAPI> getProvidedServiceAPIs() {
+        return providedServiceAPIs == null ? List.of() : providedServiceAPIs;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) {
@@ -107,7 +113,8 @@ public class ExtensionDefinition {
             && Objects.equals(bundle, that.bundle)
             && Objects.equals(extensionType, that.extensionType)
             && Objects.equals(version, that.version)
-            && Objects.equals(runtime, that.runtime);
+            && Objects.equals(runtime, that.runtime)
+            && Objects.equals(providedServiceAPIs, that.providedServiceAPIs);
     }
 
     @Override
@@ -129,6 +136,7 @@ public class ExtensionDefinition {
         private List<String> tags;
         private String version;
         private ExtensionRuntime runtime;
+        private List<ServiceAPI> providedServiceAPIs = new ArrayList<>();
 
         public Builder implementationClassName(final String className) {
             this.implementationClassName = className;
@@ -165,6 +173,13 @@ public class ExtensionDefinition {
             return this;
         }
 
+        public Builder providedServiceAPIs(final List<ServiceAPI> providedServiceAPIs) {
+            if (providedServiceAPIs != null) {
+                this.providedServiceAPIs = new ArrayList<>(providedServiceAPIs);
+            }
+            return this;
+        }
+
         public ExtensionDefinition build() {
             requireSet(implementationClassName, "Implementation Class Name");
             requireSet(extensionType, "Extension Type");
@@ -184,5 +199,55 @@ public class ExtensionDefinition {
         JAVA,
 
         PYTHON;
+    }
+
+    public static class ServiceAPI {
+        private final String className;
+        private final String group;
+        private final String artifact;
+        private final String version;
+
+        public ServiceAPI(final String className, final String group, final String artifact, final String version) {
+            this.className = className;
+            this.group = group;
+            this.artifact = artifact;
+            this.version = version;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        public String getGroup() {
+            return group;
+        }
+
+        public String getArtifact() {
+            return artifact;
+        }
+
+        public String getVersion() {
+            return version;
+        }
+
+        @Override
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            final ServiceAPI other = (ServiceAPI) obj;
+            return Objects.equals(className, other.className)
+                    && Objects.equals(group, other.group)
+                    && Objects.equals(artifact, other.artifact)
+                    && Objects.equals(version, other.version);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(className, group, artifact, version);
+        }
     }
 }

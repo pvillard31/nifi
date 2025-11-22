@@ -120,7 +120,9 @@ import org.apache.nifi.remote.TransferDirection;
 import org.apache.nifi.remote.protocol.SiteToSiteTransportProtocol;
 import org.apache.nifi.scheduling.ExecutionNode;
 import org.apache.nifi.scheduling.SchedulingStrategy;
+import org.apache.nifi.util.BundleUtils;
 import org.apache.nifi.util.FlowDifferenceFilters;
+import org.apache.nifi.web.api.dto.BundleDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -157,6 +159,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
     private final VersionedFlowSynchronizationContext context;
     private final Set<String> updatedVersionedComponentIds = new HashSet<>();
     private final List<CreatedOrModifiedExtension> createdAndModifiedExtensions = new ArrayList<>();
+    private final Map<BundleCoordinate, BundleCoordinate> resolvedRemoteBundleCoordinates = new HashMap<>();
 
     private FlowSynchronizationOptions syncOptions;
     private final ConnectableAdditionTracker connectableAdditionTracker = new ConnectableAdditionTracker();
@@ -311,6 +314,8 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
 
     @Override
     public void synchronize(final ProcessGroup group, final VersionedExternalFlow versionedExternalFlow, final FlowSynchronizationOptions options) {
+        installMissingRemoteBundles(versionedExternalFlow);
+
         final NiFiRegistryFlowMapper mapper = new NiFiRegistryFlowMapper(context.getExtensionManager(), context.getFlowMappingOptions());
         final VersionedProcessGroup versionedGroup = mapper.mapProcessGroup(group, context.getControllerServiceProvider(), context.getFlowManager(), true);
 
@@ -1292,12 +1297,9 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
 
         for (final VersionedProcessor processorToAdd : proposedProcessors.values()) {
             final String processorToAddClass = processorToAdd.getType();
-            final BundleCoordinate processorToAddCoordinate = toCoordinate(processorToAdd.getBundle());
+            final BundleCoordinate processorToAddCoordinate = resolveBundleCoordinate(processorToAdd.getBundle(), processorToAddClass);
 
-            // Get the exact bundle requested, if it exists.
-            final Bundle bundle = processorToAdd.getBundle();
-            final BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
-            final org.apache.nifi.bundle.Bundle resolved = context.getExtensionManager().getBundle(coordinate);
+            final org.apache.nifi.bundle.Bundle resolved = context.getExtensionManager().getBundle(processorToAddCoordinate);
 
             if (resolved == null) {
                 // Could not resolve the bundle explicitly. Check for possible bundles.
@@ -1323,7 +1325,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
 
         for (final VersionedControllerService serviceToAdd : proposedServices.values()) {
             final String serviceToAddClass = serviceToAdd.getType();
-            final BundleCoordinate serviceToAddCoordinate = toCoordinate(serviceToAdd.getBundle());
+            final BundleCoordinate serviceToAddCoordinate = resolveBundleCoordinate(serviceToAdd.getBundle(), serviceToAddClass);
 
             final org.apache.nifi.bundle.Bundle resolved = context.getExtensionManager().getBundle(serviceToAddCoordinate);
             if (resolved == null) {
@@ -1395,7 +1397,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
         final String identifier = componentIdGenerator.generateUuid(proposed.getIdentifier(), proposed.getInstanceIdentifier(), destinationId);
         LOG.debug("Adding Controller Service with ID {} of type {}", identifier, proposed.getType());
 
-        final BundleCoordinate coordinate = toCoordinate(proposed.getBundle());
+        final BundleCoordinate coordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
         final Set<URL> additionalUrls = Collections.emptySet();
         final ControllerServiceNode newService = context.getFlowManager().createControllerService(proposed.getType(), identifier, coordinate, additionalUrls, true, true, null);
         newService.setVersionedComponentId(proposed.getIdentifier());
@@ -1540,8 +1542,8 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
                 service.setBulletinLevel(LogLevel.WARN);
             }
 
-            if (!isEqual(service.getBundleCoordinate(), proposed.getBundle())) {
-                final BundleCoordinate newBundleCoordinate = toCoordinate(proposed.getBundle());
+            final BundleCoordinate newBundleCoordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
+            if (!service.getBundleCoordinate().equals(newBundleCoordinate)) {
                 final List<PropertyDescriptor> descriptors = new ArrayList<>(service.getRawPropertyValues().keySet());
                 final Set<URL> additionalUrls = service.getAdditionalClasspathResources(descriptors);
                 context.getReloadComponent().reload(service, proposed.getType(), newBundleCoordinate, additionalUrls);
@@ -2373,20 +2375,23 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
             .build();
     }
 
-    private boolean isEqual(final BundleCoordinate coordinate, final Bundle bundle) {
-        if (!bundle.getGroup().equals(coordinate.getGroup())) {
-            return false;
-        }
-
-        if (!bundle.getArtifact().equals(coordinate.getId())) {
-            return false;
-        }
-
-        return bundle.getVersion().equals(coordinate.getVersion());
-    }
-
     private BundleCoordinate toCoordinate(final Bundle bundle) {
         return new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+    }
+
+    private BundleCoordinate resolveBundleCoordinate(final Bundle bundle, final String componentType) {
+        final BundleCoordinate requested = toCoordinate(bundle);
+        final BundleCoordinate resolvedRemote = resolvedRemoteBundleCoordinates.get(requested);
+        if (resolvedRemote != null) {
+            return resolvedRemote;
+        }
+
+        try {
+            final BundleDTO bundleDTO = new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), bundle.isRemote());
+            return BundleUtils.getCompatibleBundle(context.getExtensionManager(), componentType, bundleDTO);
+        } catch (final IllegalStateException e) {
+            return requested;
+        }
     }
 
     @Override
@@ -2649,7 +2654,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
         final String identifier = componentIdGenerator.generateUuid(proposed.getIdentifier(), proposed.getInstanceIdentifier(), destination.getIdentifier());
         LOG.debug("Adding Processor with ID {} of type {}", identifier, proposed.getType());
 
-        final BundleCoordinate coordinate = toCoordinate(proposed.getBundle());
+        final BundleCoordinate coordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
         final ProcessorNode procNode = context.getFlowManager().createProcessor(proposed.getType(), identifier, coordinate, true);
         procNode.setVersionedComponentId(proposed.getIdentifier());
 
@@ -2977,8 +2982,8 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
             processor.setName(proposed.getName());
             processor.setPenalizationPeriod(proposed.getPenaltyDuration());
 
-            if (!isEqual(processor.getBundleCoordinate(), proposed.getBundle())) {
-                final BundleCoordinate newBundleCoordinate = toCoordinate(proposed.getBundle());
+            final BundleCoordinate newBundleCoordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
+            if (!processor.getBundleCoordinate().equals(newBundleCoordinate)) {
                 final List<PropertyDescriptor> descriptors = new ArrayList<>(processor.getProperties().keySet());
                 final Set<URL> additionalUrls = processor.getAdditionalClasspathResources(descriptors);
                 context.getReloadComponent().reload(processor, proposed.getType(), newBundleCoordinate, additionalUrls);
@@ -3738,7 +3743,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
     }
 
     private ReportingTaskNode addReportingTask(final VersionedReportingTask reportingTask) throws ReportingTaskInstantiationException {
-        final BundleCoordinate coordinate = toCoordinate(reportingTask.getBundle());
+        final BundleCoordinate coordinate = resolveBundleCoordinate(reportingTask.getBundle(), reportingTask.getType());
         final ReportingTaskNode taskNode = context.getFlowManager().createReportingTask(reportingTask.getType(), reportingTask.getInstanceIdentifier(), coordinate, false);
         updateReportingTask(taskNode, reportingTask);
 
@@ -3760,8 +3765,8 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
             reportingTask.setSchedulingStrategy(SchedulingStrategy.valueOf(proposed.getSchedulingStrategy()));
             reportingTask.setAnnotationData(proposed.getAnnotationData());
 
-            if (!isEqual(reportingTask.getBundleCoordinate(), proposed.getBundle())) {
-                final BundleCoordinate newBundleCoordinate = toCoordinate(proposed.getBundle());
+            final BundleCoordinate newBundleCoordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
+            if (!reportingTask.getBundleCoordinate().equals(newBundleCoordinate)) {
                 final List<PropertyDescriptor> descriptors = new ArrayList<>(reportingTask.getProperties().keySet());
                 final Set<URL> additionalUrls = reportingTask.getAdditionalClasspathResources(descriptors);
                 context.getReloadComponent().reload(reportingTask, proposed.getType(), newBundleCoordinate, additionalUrls);
@@ -3832,7 +3837,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
     }
 
     private FlowAnalysisRuleNode addFlowAnalysisRule(final VersionedFlowAnalysisRule flowAnalysisRule) throws FlowAnalysisRuleInstantiationException {
-        final BundleCoordinate coordinate = toCoordinate(flowAnalysisRule.getBundle());
+        final BundleCoordinate coordinate = resolveBundleCoordinate(flowAnalysisRule.getBundle(), flowAnalysisRule.getType());
         final FlowAnalysisRuleNode ruleNode = context.getFlowManager().createFlowAnalysisRule(flowAnalysisRule.getType(), flowAnalysisRule.getInstanceIdentifier(), coordinate, false);
         updateFlowAnalysisRule(ruleNode, flowAnalysisRule);
         return ruleNode;
@@ -3848,8 +3853,8 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
             flowAnalysisRule.setComments(proposed.getComments());
             flowAnalysisRule.setEnforcementPolicy(proposed.getEnforcementPolicy());
 
-            if (!isEqual(flowAnalysisRule.getBundleCoordinate(), proposed.getBundle())) {
-                final BundleCoordinate newBundleCoordinate = toCoordinate(proposed.getBundle());
+            final BundleCoordinate newBundleCoordinate = resolveBundleCoordinate(proposed.getBundle(), proposed.getType());
+            if (!flowAnalysisRule.getBundleCoordinate().equals(newBundleCoordinate)) {
                 final List<PropertyDescriptor> descriptors = new ArrayList<>(flowAnalysisRule.getProperties().keySet());
                 final Set<URL> additionalUrls = flowAnalysisRule.getAdditionalClasspathResources(descriptors);
                 context.getReloadComponent().reload(flowAnalysisRule, proposed.getType(), newBundleCoordinate, additionalUrls);
@@ -3996,6 +4001,78 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
             }
         }
         return propertyValues;
+    }
+
+    private void installMissingRemoteBundles(final VersionedExternalFlow versionedExternalFlow) {
+        if (versionedExternalFlow == null || versionedExternalFlow.getFlowContents() == null) {
+            LOG.debug("No versioned flow contents provided; skipping remote bundle inspection");
+            return;
+        }
+
+        resolvedRemoteBundleCoordinates.clear();
+        final Set<BundleCoordinate> toInstall = new HashSet<>();
+        collectProcessGroupBundles(versionedExternalFlow.getFlowContents(), toInstall, resolvedRemoteBundleCoordinates);
+
+        LOG.info("Collected {} bundle(s) referenced by proposed flow for remote installation", toInstall.size());
+        for (BundleCoordinate coordinate : toInstall) {
+            LOG.debug("Queueing remote bundle installation for {}", coordinate.getCoordinate());
+            try {
+                context.getFlowManager().installRemoteBundle(coordinate);
+            } catch (Exception e) {
+                LOG.warn("Failed to queue remote bundle {} for installation: {}", coordinate.getCoordinate(), e.getMessage(), e);
+            }
+        }
+    }
+
+    private void collectProcessGroupBundles(final VersionedProcessGroup group, final Set<BundleCoordinate> coordinates,
+                                            final Map<BundleCoordinate, BundleCoordinate> resolvedRemoteBundles) {
+        if (group == null) {
+            return;
+        }
+
+        addBundleIfRemote(group.getControllerServices(), VersionedControllerService::getBundle, resolvedRemoteBundles, coordinates);
+        addBundleIfRemote(group.getProcessors(), VersionedProcessor::getBundle, resolvedRemoteBundles, coordinates);
+
+        for (VersionedProcessGroup child : group.getProcessGroups()) {
+            collectProcessGroupBundles(child, coordinates, resolvedRemoteBundles);
+        }
+    }
+
+    private <T> void addBundleIfRemote(final Collection<T> components, final Function<T, Bundle> bundleAccessor,
+                                       final Map<BundleCoordinate, BundleCoordinate> resolvedRemoteBundles, final Set<BundleCoordinate> coordinates) {
+        if (components == null) {
+            return;
+        }
+
+        for (T component : components) {
+            final Bundle bundle = bundleAccessor.apply(component);
+            if (bundle == null || bundle.getGroup() == null || bundle.getArtifact() == null || bundle.getVersion() == null) {
+                LOG.debug("Skipping bundle resolution for component {} because bundle is incomplete", component);
+                continue;
+            }
+
+            final BundleCoordinate requestedCoordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+            BundleCoordinate coordinate = requestedCoordinate;
+
+            final BundleCoordinate resolved = context.getExtensionManager().resolveRemoteBundle(coordinate);
+            if (resolved != null) {
+                if (!resolved.equals(coordinate)) {
+                    LOG.debug("Resolved remote bundle {} to available version {}", coordinate.getCoordinate(), resolved.getCoordinate());
+                }
+                coordinate = resolved;
+                resolvedRemoteBundles.putIfAbsent(requestedCoordinate, resolved);
+                LOG.debug("Adding bundle {} to remote install set", coordinate.getCoordinate());
+                coordinates.add(coordinate);
+                continue;
+            }
+
+            if (bundle.isRemote() || context.getExtensionManager().isRemoteBundle(coordinate)) {
+                LOG.debug("Adding bundle {} to remote install set (marked remote)", coordinate.getCoordinate());
+                coordinates.add(coordinate);
+            } else {
+                LOG.debug("Skipping bundle {}:{}:{} (not remote and no remote resolution)", bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+            }
+        }
     }
 
     private record CreatedOrModifiedExtension(ComponentNode extension, Map<String, String> propertyValues) {

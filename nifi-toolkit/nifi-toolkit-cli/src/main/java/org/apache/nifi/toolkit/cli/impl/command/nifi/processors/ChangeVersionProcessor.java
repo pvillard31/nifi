@@ -116,7 +116,7 @@ public class ChangeVersionProcessor extends AbstractNiFiCommand<ProcessorsResult
                     processor = processorClient.getProcessor(processor.getId());
                 }
 
-                final BundleDTO updatedBundle = new BundleDTO(bundleGroup, bundleArtifact, bundleVersion);
+                final BundleDTO updatedBundle = new BundleDTO(bundleGroup, bundleArtifact, bundleVersion, false);
                 final ProcessorDTO processorDto = new ProcessorDTO();
                 processorDto.setId(processor.getId());
                 processorDto.setBundle(updatedBundle);

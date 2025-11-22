@@ -246,7 +246,7 @@ public class DtoFactoryTest {
                 .workingDir(new File("."))
                 .coordinate(coordinate)
                 .build();
-        return new Bundle(details, getClass().getClassLoader());
+        return new Bundle(details, getClass().getClassLoader(), false);
     }
 
     @Test

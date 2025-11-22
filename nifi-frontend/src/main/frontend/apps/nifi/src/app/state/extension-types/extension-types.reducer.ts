@@ -35,6 +35,7 @@ export const initialExtensionsTypesState: ExtensionTypesState = {
     prioritizerTypes: [],
     reportingTaskTypes: [],
     registryClientTypes: [],
+    extensionRegistryClientTypes: [],
     flowAnalysisRuleTypes: [],
     parameterProviderTypes: [],
     status: 'pending'
@@ -54,6 +55,7 @@ export const extensionTypesReducer = createReducer(
             prioritizerTypes: [],
             reportingTaskTypes: [],
             registryClientTypes: [],
+            extensionRegistryClientTypes: [],
             parameterProviderTypes: [],
             flowAnalysisRuleTypes: [],
             status: 'loading' as const
@@ -71,6 +73,7 @@ export const extensionTypesReducer = createReducer(
         controllerServiceTypes: response.controllerServiceTypes,
         reportingTaskTypes: response.reportingTaskTypes,
         registryClientTypes: response.registryClientTypes,
+        extensionRegistryClientTypes: response.extensionRegistryClientTypes,
         parameterProviderTypes: response.parameterProviderTypes,
         flowAnalysisRuleTypes: response.flowAnalysisRuleTypes,
         status: 'success' as const
@@ -90,6 +93,7 @@ export const extensionTypesReducer = createReducer(
         controllerServiceTypes: response.controllerServiceTypes,
         reportingTaskTypes: response.reportingTaskTypes,
         registryClientTypes: response.registryClientTypes,
+        extensionRegistryClientTypes: response.extensionRegistryClientTypes,
         parameterProviderTypes: response.parameterProviderTypes,
         flowAnalysisRuleTypes: response.flowAnalysisRuleTypes,
         status: 'success' as const

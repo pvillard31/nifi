@@ -80,7 +80,7 @@ export class ExtensionCreation extends CloseOnEscapeDialog {
     protected readonly RestrictionsTip = RestrictionsTip;
     protected readonly ControllerServiceApiTip = ControllerServiceApiTip;
 
-    displayedColumns: string[] = ['type', 'version', 'tags'];
+    displayedColumns: string[] = ['type', 'version', 'remote', 'tags'];
     dataSource: MatTableDataSource<DocumentedType> = new MatTableDataSource<DocumentedType>();
     selectedType: DocumentedType | null = null;
 
@@ -113,6 +113,11 @@ export class ExtensionCreation extends CloseOnEscapeDialog {
             return documentedType.bundle.version;
         }
         return '';
+    }
+
+    isRemote(documentedType: DocumentedType): boolean {
+        const bundle: any = documentedType?.bundle;
+        return bundle?.isRemote === true || bundle?.remote === true;
     }
 
     implementsControllerService(documentedType: DocumentedType): boolean {

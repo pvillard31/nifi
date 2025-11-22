@@ -79,6 +79,10 @@ export class ExtensionTypesService {
         return this.httpClient.get(`${ExtensionTypesService.API}/controller/registry-types`);
     }
 
+    getExtensionRegistryClientTypes(): Observable<any> {
+        return this.httpClient.get(`${ExtensionTypesService.API}/controller/extension-registry-types`);
+    }
+
     getPrioritizers(): Observable<any> {
         return this.httpClient.get(`${ExtensionTypesService.API}/flow/prioritizers`);
     }

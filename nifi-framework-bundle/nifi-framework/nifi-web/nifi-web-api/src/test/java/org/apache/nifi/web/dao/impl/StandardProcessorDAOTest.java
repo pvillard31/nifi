@@ -207,7 +207,7 @@ class StandardProcessorDAOTest {
 
         final BundleCoordinate bundleCoordinate = new BundleCoordinate(BUNDLE_GROUP_ID, processorType, BUNDLE_VERSION);
         final BundleDetails bundleDetails = new BundleDetails.Builder().coordinate(bundleCoordinate).workingDir(tempDir).build();
-        final Bundle bundle = new Bundle(bundleDetails, getClass().getClassLoader());
+        final Bundle bundle = new Bundle(bundleDetails, getClass().getClassLoader(), false);
         final List<Bundle> bundles = List.of(bundle);
 
         when(flowManager.getGroup(eq(groupId))).thenReturn(processGroup);

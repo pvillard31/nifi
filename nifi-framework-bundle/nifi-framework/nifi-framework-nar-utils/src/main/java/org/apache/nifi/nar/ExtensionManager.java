@@ -195,4 +195,23 @@ public interface ExtensionManager {
      */
     void logClassLoaderDetails();
 
+    /**
+     * Checks if the given bundle is a remote bundle.
+     * @param coordinate coordinate of the bundle
+     * @return true if the bundle is remote, false otherwise
+     */
+    boolean isRemoteBundle(BundleCoordinate coordinate);
+
+    /**
+     * Resolve a remote bundle for the requested group/artifact by selecting the most suitable available version.
+     * Returns {@code null} when no remote bundle exists for the GA.
+     */
+    BundleCoordinate resolveRemoteBundle(BundleCoordinate requested);
+
+    /**
+     * Returns the list of NAR install requests for the given bundle coordinate.
+     * @param bundleCoordinate the coordinate of the NAR to install
+     */
+    List<NarInstallRequestFromRegistry> getNARInstallRequest(BundleCoordinate bundleCoordinate);
+
 }

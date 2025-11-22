@@ -47,8 +47,12 @@ export class Settings implements OnInit {
             link: 'flow-analysis-rules'
         },
         {
-            label: 'Registry Clients',
+            label: 'Flow Registry Clients',
             link: 'registry-clients'
+        },
+        {
+            label: 'Extensions Registry Clients',
+            link: 'extension-registry-clients'
         },
         {
             label: 'Parameter Providers',

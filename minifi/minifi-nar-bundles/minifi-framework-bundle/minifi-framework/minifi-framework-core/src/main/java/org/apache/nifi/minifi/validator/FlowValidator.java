@@ -17,19 +17,8 @@
 
 package org.apache.nifi.minifi.validator;
 
-import static org.apache.nifi.components.AsyncLoadedProcessor.LoadState.DOWNLOADING_DEPENDENCIES;
-import static org.apache.nifi.components.AsyncLoadedProcessor.LoadState.INITIALIZING_ENVIRONMENT;
-import static org.apache.nifi.components.AsyncLoadedProcessor.LoadState.LOADING_PROCESSOR_CODE;
-import static org.apache.nifi.components.validation.ValidationStatus.INVALID;
-import static org.apache.nifi.components.validation.ValidationStatus.VALIDATING;
-import static org.apache.nifi.controller.service.ControllerServiceState.ENABLING;
-import static org.apache.nifi.minifi.commons.utils.RetryUtil.retry;
-
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Stream;
-import org.apache.nifi.components.AsyncLoadedProcessor;
+import org.apache.nifi.components.AsyncLoadedComponent;
+import org.apache.nifi.components.LoadState;
 import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.controller.ComponentNode;
 import org.apache.nifi.controller.flow.FlowManager;
@@ -37,11 +26,24 @@ import org.apache.nifi.controller.service.StandardControllerServiceNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import static org.apache.nifi.components.LoadState.DOWNLOADING_DEPENDENCIES;
+import static org.apache.nifi.components.LoadState.INITIALIZING_ENVIRONMENT;
+import static org.apache.nifi.components.LoadState.LOADING_PROCESSOR_CODE;
+import static org.apache.nifi.components.validation.ValidationStatus.INVALID;
+import static org.apache.nifi.components.validation.ValidationStatus.VALIDATING;
+import static org.apache.nifi.controller.service.ControllerServiceState.ENABLING;
+import static org.apache.nifi.minifi.commons.utils.RetryUtil.retry;
+
 public final class FlowValidator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FlowValidator.class);
 
-    private static final Set<AsyncLoadedProcessor.LoadState> INITIALIZING_ASYNC_PROCESSOR_STATES =
+    private static final Set<LoadState> INITIALIZING_ASYNC_COMPONENT_STATES =
         Set.of(INITIALIZING_ENVIRONMENT, DOWNLOADING_DEPENDENCIES, LOADING_PROCESSOR_CODE);
 
     private static final int ASYNC_LOADING_COMPONENT_INIT_RETRY_PAUSE_DURATION_MS = 5000;
@@ -90,8 +92,8 @@ public final class FlowValidator {
     private static List<? extends ComponentNode> initializingAsyncLoadingComponents(List<? extends ComponentNode> componentNodes) {
         return componentNodes.stream()
             .filter(componentNode -> componentNode.performValidation() == INVALID)
-            .filter(componentNode -> componentNode.getComponent() instanceof AsyncLoadedProcessor asyncLoadedProcessor
-                && INITIALIZING_ASYNC_PROCESSOR_STATES.contains(asyncLoadedProcessor.getState()))
+            .filter(componentNode -> componentNode.getComponent() instanceof AsyncLoadedComponent asyncLoadedComponent
+                && INITIALIZING_ASYNC_COMPONENT_STATES.contains(asyncLoadedComponent.getState()))
             .toList();
     }
 

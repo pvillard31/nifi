@@ -30,14 +30,16 @@ public class BundleDTO {
     private String group;
     private String artifact;
     private String version;
+    private boolean isRemote;
 
     public BundleDTO() {
     }
 
-    public BundleDTO(final String group, final String artifact, final String version) {
+    public BundleDTO(final String group, final String artifact, final String version, final boolean isRemote) {
         this.group = group;
         this.artifact = artifact;
         this.version = version;
+        this.isRemote = isRemote;
     }
 
     /**
@@ -68,6 +70,20 @@ public class BundleDTO {
 
     public void setArtifact(String artifact) {
         this.artifact = artifact;
+    }
+
+    /**
+     * Whether or not the bundle is remote and needs to be downloaded
+     * @return true if the bundle is remote
+     */
+    @Schema(description = "If the bundle is currently remote."
+    )
+    public boolean isRemote() {
+        return isRemote;
+    }
+
+    public void setRemote(boolean isRemote) {
+        this.isRemote = isRemote;
     }
 
     /**

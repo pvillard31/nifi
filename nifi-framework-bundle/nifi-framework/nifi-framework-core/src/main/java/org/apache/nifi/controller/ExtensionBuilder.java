@@ -75,6 +75,13 @@ import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.GhostFlowRegistryClient;
 import org.apache.nifi.registry.flow.StandardFlowRegistryClientInitializationContext;
 import org.apache.nifi.registry.flow.StandardFlowRegistryClientNode;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
+import org.apache.nifi.controller.extension.ExtensionRegistryClientInstantiationException;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientInitializationContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
+import org.apache.nifi.registry.extension.GhostExtensionRegistryClient;
+import org.apache.nifi.registry.extension.StandardExtensionRegistryClientInitializationContext;
+import org.apache.nifi.registry.extension.StandardExtensionRegistryClientNode;
 import org.apache.nifi.reporting.GhostReportingTask;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.reporting.ReportingInitializationContext;
@@ -317,6 +324,51 @@ public class ExtensionBuilder {
        }
 
        final FlowRegistryClientNode clientNode = createFlowRegistryClientNode(loggableComponent, creationSuccessful);
+       return clientNode;
+   }
+
+   public ExtensionRegistryClientNode buildExtensionRegistryClient() {
+       if (identifier == null) {
+           throw new IllegalStateException("ExtensionRegistryClient ID must be specified");
+       }
+       if (type == null) {
+           throw new IllegalStateException("ExtensionRegistryClient Type must be specified");
+       }
+       if (bundleCoordinate == null) {
+           throw new IllegalStateException("Bundle Coordinate must be specified");
+       }
+       if (serviceProvider == null) {
+           throw new IllegalStateException("Controller Service Provider must be specified");
+       }
+       if (extensionManager == null) {
+           throw new IllegalStateException("Extension Manager must be specified");
+       }
+       if (nodeTypeProvider == null) {
+           throw new IllegalStateException("Node Type Provider must be specified");
+       }
+       if (reloadComponent == null) {
+           throw new IllegalStateException("Reload Component must be specified");
+       }
+       if (flowController == null) {
+           throw new IllegalStateException("FlowController must be specified");
+       }
+
+       boolean creationSuccessful = true;
+       LoggableComponent<ExtensionRegistryClient> loggableComponent;
+       try {
+           loggableComponent = createLoggableExtensionRegistryClient();
+       } catch (final ExtensionRegistryClientInstantiationException e) {
+           logger.error("Could not create ExtensionRegistryClient of type {} from {} for ID {} due to {}; creating \"Ghost\" implementation",
+                   type, bundleCoordinate, identifier, e.getMessage());
+           if (logger.isDebugEnabled()) {
+               logger.debug(e.getMessage(), e);
+           }
+           final GhostExtensionRegistryClient ghostExtensionRegistryClient = new GhostExtensionRegistryClient(identifier, type);
+           loggableComponent = new LoggableComponent<>(ghostExtensionRegistryClient, bundleCoordinate, null);
+           creationSuccessful = false;
+       }
+
+       final ExtensionRegistryClientNode clientNode = createExtensionRegistryClientNode(loggableComponent, creationSuccessful);
        return clientNode;
    }
 
@@ -608,6 +660,48 @@ public class ExtensionBuilder {
        }
    }
 
+   private ExtensionRegistryClientNode createExtensionRegistryClientNode(final LoggableComponent<ExtensionRegistryClient> client, final boolean creationSuccessful) {
+       final ValidationContextFactory validationContextFactory = createValidationContextFactory(serviceProvider);
+       final StandardExtensionRegistryClientNode clientNode;
+
+       if (creationSuccessful) {
+           clientNode = new StandardExtensionRegistryClientNode(
+                   flowController,
+                   flowController.getFlowManager(),
+                   client,
+                   identifier,
+                   validationContextFactory,
+                   serviceProvider,
+                   type,
+                   client.getComponent().getClass().getCanonicalName(),
+                   reloadComponent,
+                   extensionManager,
+                   validationTrigger,
+                   false
+           );
+       } else {
+           final String simpleClassName = type.contains(".") ? StringUtils.substringAfterLast(type, ".") : type;
+           final String componentType = "(Missing) " + simpleClassName;
+
+           clientNode = new StandardExtensionRegistryClientNode(
+                   flowController,
+                   flowController.getFlowManager(),
+                   client,
+                   identifier,
+                   validationContextFactory,
+                   serviceProvider,
+                   componentType,
+                   type,
+                   reloadComponent,
+                   extensionManager,
+                   validationTrigger,
+                   true
+           );
+       }
+
+       return clientNode;
+   }
+
    private void applyDefaultSettings(final ProcessorNode processorNode) {
        try {
            final Class<?> procClass = processorNode.getProcessor().getClass();
@@ -868,6 +962,20 @@ public class ExtensionBuilder {
        }
    }
 
+   private LoggableComponent<ExtensionRegistryClient> createLoggableExtensionRegistryClient() throws ExtensionRegistryClientInstantiationException {
+       try {
+           final LoggableComponent<ExtensionRegistryClient> clientComponent = createLoggableComponent(ExtensionRegistryClient.class, new StandardLoggingContext());
+
+           final ExtensionRegistryClientInitializationContext context = new StandardExtensionRegistryClientInitializationContext(
+                   identifier, clientComponent.getLogger(), systemSslContext);
+
+           clientComponent.getComponent().initialize(context);
+           return clientComponent;
+       } catch (final Throwable t) {
+           throw new ExtensionRegistryClientInstantiationException(type, t);
+       }
+   }
+
    private LoggableComponent<ParameterProvider> createLoggableParameterProvider() throws ParameterProviderInstantiationException {
        try {
            final LoggableComponent<ParameterProvider> providerComponent = createLoggableComponent(ParameterProvider.class, new StandardLoggingContext());
@@ -899,7 +1007,7 @@ public class ExtensionBuilder {
                classloaderIsolationKey);
            Thread.currentThread().setContextClassLoader(detectedClassLoader);
 
-           final Processor processor = pythonBridge.createProcessor(identifier, type, bundleCoordinate.getVersion(), true, true);
+           final Processor processor = (Processor) pythonBridge.createProcessor(identifier, type, bundleCoordinate.getVersion(), true, true);
 
            final ComponentLog componentLog = new SimpleProcessLogger(identifier, processor, loggingContext);
            final TerminationAwareLogger terminationAwareLogger = new TerminationAwareLogger(componentLog);

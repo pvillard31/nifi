@@ -29,6 +29,7 @@ import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.flow.FlowManager;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.ControllerServiceProvider;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -192,6 +193,7 @@ public class StandardNarComponentManager implements NarComponentManager {
                 case ControllerServiceNode controllerServiceNode -> reloadComponent.reload(controllerServiceNode, componentType, reloadCoordinate, Collections.emptySet());
                 case ReportingTaskNode reportingTaskNode -> reloadComponent.reload(reportingTaskNode, componentType, reloadCoordinate, Collections.emptySet());
                 case FlowRegistryClientNode flowRegistryClientNode -> reloadComponent.reload(flowRegistryClientNode, componentType, reloadCoordinate, Collections.emptySet());
+                case ExtensionRegistryClientNode extensionRegistryClientNode -> reloadComponent.reload(extensionRegistryClientNode, componentType, reloadCoordinate, Collections.emptySet());
                 case FlowAnalysisRuleNode flowAnalysisRuleNode -> reloadComponent.reload(flowAnalysisRuleNode, componentType, reloadCoordinate, Collections.emptySet());
                 case ParameterProviderNode parameterProviderNode -> reloadComponent.reload(parameterProviderNode, componentType, reloadCoordinate, Collections.emptySet());
                 default -> logger.warn("Component of type [{}] from bundle [{}] is not reloadable", componentType, reloadCoordinate);
@@ -210,6 +212,7 @@ public class StandardNarComponentManager implements NarComponentManager {
         componentNodes.addAll(getComponents(flowManager.getAllControllerServices(), extensionDefinitions, componentFilter));
         componentNodes.addAll(getComponents(flowManager.getAllReportingTasks(), extensionDefinitions, componentFilter));
         componentNodes.addAll(getComponents(flowManager.getAllFlowRegistryClients(), extensionDefinitions, componentFilter));
+        componentNodes.addAll(getComponents(flowManager.getAllExtensionRegistryClients(), extensionDefinitions, componentFilter));
         componentNodes.addAll(getComponents(flowManager.getAllFlowAnalysisRules(), extensionDefinitions, componentFilter));
         componentNodes.addAll(getComponents(flowManager.getAllParameterProviders(), extensionDefinitions, componentFilter));
         return componentNodes;

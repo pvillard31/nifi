@@ -287,7 +287,7 @@ public class StandardControllerServiceResolverTest {
     private ControllerServiceAPI createServiceApi(final String type, final String group, final String artifact, final String version) {
         final ControllerServiceAPI serviceAPI = new ControllerServiceAPI();
         serviceAPI.setType(type);
-        serviceAPI.setBundle(new Bundle(group, artifact, version));
+        serviceAPI.setBundle(new Bundle(group, artifact, version, false));
         return serviceAPI;
     }
 

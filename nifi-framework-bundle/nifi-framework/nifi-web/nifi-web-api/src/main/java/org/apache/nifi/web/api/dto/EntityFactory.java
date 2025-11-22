@@ -41,8 +41,6 @@ import org.apache.nifi.web.api.entity.AccessPolicySummaryEntity;
 import org.apache.nifi.web.api.entity.ActionEntity;
 import org.apache.nifi.web.api.entity.AffectedComponentEntity;
 import org.apache.nifi.web.api.entity.AllowableValueEntity;
-import org.apache.nifi.web.api.entity.FlowRegistryBranchEntity;
-import org.apache.nifi.web.api.entity.FlowRegistryBucketEntity;
 import org.apache.nifi.web.api.entity.BulletinEntity;
 import org.apache.nifi.web.api.entity.ComponentReferenceEntity;
 import org.apache.nifi.web.api.entity.ComponentValidationResultEntity;
@@ -54,8 +52,11 @@ import org.apache.nifi.web.api.entity.ConnectionStatusSnapshotEntity;
 import org.apache.nifi.web.api.entity.ControllerConfigurationEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowBreadcrumbEntity;
+import org.apache.nifi.web.api.entity.FlowRegistryBranchEntity;
+import org.apache.nifi.web.api.entity.FlowRegistryBucketEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FunnelEntity;
 import org.apache.nifi.web.api.entity.LabelEntity;
@@ -684,6 +685,41 @@ public final class EntityFactory {
         return entity;
     }
 
+    public ExtensionRegistryClientEntity createExtensionRegistryClientEntity(
+            final ExtensionRegistryClientDTO dto,
+            final RevisionDTO revision,
+            final PermissionsDTO permissions,
+            final PermissionsDTO operatePermissions,
+            final List<BulletinEntity> bulletins) {
+        final ExtensionRegistryClientEntity entity = createExtensionRegistryClientEntity(dto, revision, permissions);
+
+        if (dto != null) {
+            entity.setOperatePermissions(operatePermissions);
+
+            if (permissions != null && permissions.getCanRead()) {
+                entity.setBulletins(bulletins);
+            }
+        }
+
+        return entity;
+    }
+
+    public ExtensionRegistryClientEntity createExtensionRegistryClientEntity(final ExtensionRegistryClientDTO dto, final RevisionDTO revision, final PermissionsDTO permissions) {
+        final ExtensionRegistryClientEntity entity = new ExtensionRegistryClientEntity();
+        entity.setRevision(revision);
+        entity.setPermissions(permissions);
+
+        if (dto != null) {
+            entity.setId(dto.getId());
+
+            if (permissions != null && permissions.getCanRead()) {
+                entity.setComponent(dto);
+            }
+        }
+
+        return entity;
+    }
+
     public ParameterContextEntity createParameterContextEntity(final ParameterContextDTO dto, final RevisionDTO revision, final PermissionsDTO permissions) {
         final ParameterContextEntity entity = new ParameterContextEntity();
         entity.setRevision(revision);
@@ -813,6 +849,16 @@ public final class EntityFactory {
 
     public FlowRegistryClientEntity createRegistryEntity(final FlowRegistryClientDTO dto) {
         final FlowRegistryClientEntity entity = new FlowRegistryClientEntity();
+
+        if (dto != null) {
+            entity.setComponent(dto);
+        }
+
+        return entity;
+    }
+
+    public ExtensionRegistryClientEntity createExtensionRegistryEntity(final ExtensionRegistryClientDTO dto) {
+        final ExtensionRegistryClientEntity entity = new ExtensionRegistryClientEntity();
 
         if (dto != null) {
             entity.setComponent(dto);

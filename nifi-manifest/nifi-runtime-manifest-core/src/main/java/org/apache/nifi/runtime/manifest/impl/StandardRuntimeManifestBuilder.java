@@ -25,6 +25,7 @@ import org.apache.nifi.c2.protocol.component.api.DefinedType;
 import org.apache.nifi.c2.protocol.component.api.ExtensionComponent;
 import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowRegistryClientDefinition;
+import org.apache.nifi.c2.protocol.component.api.ExtensionRegistryClientDefinition;
 import org.apache.nifi.c2.protocol.component.api.MultiProcessorUseCase;
 import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
 import org.apache.nifi.c2.protocol.component.api.ProcessorConfiguration;
@@ -226,6 +227,9 @@ public class StandardRuntimeManifestBuilder implements RuntimeManifestBuilder {
             case FLOW_REGISTRY_CLIENT:
                 addFlowRegistryClientDefinition(extensionManifest, extension, additionalDetails, componentManifestBuilder);
                 break;
+            case EXTENSION_REGISTRY_CLIENT:
+                addExtensionRegistryClientDefinition(extensionManifest, extension, additionalDetails, componentManifestBuilder);
+                break;
         }
     }
 
@@ -408,6 +412,15 @@ public class StandardRuntimeManifestBuilder implements RuntimeManifestBuilder {
         populateExtensionComponent(extensionManifest, extension, additionalDetails, flowRegistryClientDefinition);
         populateConfigurableComponent(extension, flowRegistryClientDefinition);
         componentManifestBuilder.addFlowRegistryClient(flowRegistryClientDefinition);
+    }
+
+    private void addExtensionRegistryClientDefinition(final ExtensionManifest extensionManifest, final Extension extension, final String additionalDetails,
+                                                 final ComponentManifestBuilder componentManifestBuilder) {
+        final ExtensionRegistryClientDefinition extensionRegistryClientDefinition = new ExtensionRegistryClientDefinition();
+        populateDefinedType(extensionManifest, extension, extensionRegistryClientDefinition);
+        populateExtensionComponent(extensionManifest, extension, additionalDetails, extensionRegistryClientDefinition);
+        populateConfigurableComponent(extension, extensionRegistryClientDefinition);
+        componentManifestBuilder.addExtensionRegistryClient(extensionRegistryClientDefinition);
     }
 
     private void addFlowAnalysisRuleDefinition(final ExtensionManifest extensionManifest, final Extension extension, final String additionalDetails,

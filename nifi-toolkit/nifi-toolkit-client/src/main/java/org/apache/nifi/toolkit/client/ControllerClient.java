@@ -19,6 +19,8 @@ package org.apache.nifi.toolkit.client;
 import org.apache.nifi.web.api.entity.ClusterEntity;
 import org.apache.nifi.web.api.entity.ControllerConfigurationEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientsEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleRunStatusEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRulesEntity;
@@ -108,5 +110,13 @@ public interface ControllerClient {
     NarDetailsEntity getNarDetails(String identifier) throws NiFiClientException, IOException;
 
     File downloadNar(String identifier, File outputDir) throws NiFiClientException, IOException;
+
+    ExtensionRegistryClientsEntity getExtensionRegistryClients() throws NiFiClientException, IOException;
+
+    ExtensionRegistryClientEntity getExtensionRegistryClient(String id) throws NiFiClientException, IOException;
+
+    ExtensionRegistryClientEntity createExtensionRegistryClient(ExtensionRegistryClientEntity clientEntity) throws NiFiClientException, IOException;
+
+    ExtensionRegistryClientEntity updateExtensionRegistryClient(ExtensionRegistryClientEntity extensionRegistryClientEntity) throws NiFiClientException, IOException;
 
 }

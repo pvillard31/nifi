@@ -416,6 +416,7 @@ export interface Bundle {
     artifact: string;
     group: string;
     version: string;
+	isRemote: boolean;
 }
 
 export interface AllowableValue {
@@ -430,6 +431,16 @@ export interface AllowableValueEntity {
 }
 
 export interface RegistryClientEntity {
+    permissions: Permissions;
+    operatePermissions?: Permissions;
+    revision: Revision;
+    bulletins?: BulletinEntity[];
+    id: string;
+    uri: string;
+    component: any;
+}
+
+export interface ExtensionRegistryClientEntity {
     permissions: Permissions;
     operatePermissions?: Permissions;
     revision: Revision;

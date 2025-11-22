@@ -39,6 +39,9 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
+import jakarta.ws.rs.core.Context;
+
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.authorization.AuthorizeControllerServiceReference;
 import org.apache.nifi.authorization.Authorizer;
@@ -74,6 +77,7 @@ import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ConfigVerificationResultDTO;
 import org.apache.nifi.web.api.dto.ConfigurationAnalysisDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
+import org.apache.nifi.web.api.dto.ExtensionRegistryClientDTO;
 import org.apache.nifi.web.api.dto.FlowAnalysisRuleDTO;
 import org.apache.nifi.web.api.dto.FlowRegistryClientDTO;
 import org.apache.nifi.web.api.dto.NarCoordinateDTO;
@@ -96,6 +100,9 @@ import org.apache.nifi.web.api.entity.ConfigurationAnalysisEntity;
 import org.apache.nifi.web.api.entity.ControllerConfigurationEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.Entity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientTypesEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientsEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleRunStatusEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRulesEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientTypesEntity;
@@ -1830,6 +1837,58 @@ public class ControllerResource extends ApplicationResource {
         return entity;
     }
 
+    public Response performAsyncExtensionRegistryClientConfigVerification(final VerifyConfigRequestEntity configRequest, final NiFiUser user) {
+        final String requestId = generateUuid();
+
+        final VerifyConfigRequestDTO requestDto = configRequest.getRequest();
+        final String registryClientId = requestDto.getComponentId();
+        final List<UpdateStep> updateSteps = Collections.singletonList(new StandardUpdateStep("Verify Extension Registry Client Configuration"));
+
+        final AsynchronousWebRequest<VerifyConfigRequestEntity, List<ConfigVerificationResultDTO>> request =
+                new StandardAsynchronousWebRequest<>(requestId, configRequest, registryClientId, user, updateSteps);
+
+        final Consumer<AsynchronousWebRequest<VerifyConfigRequestEntity, List<ConfigVerificationResultDTO>>> verificationTask = asyncRequest -> {
+            try {
+                final List<ConfigVerificationResultDTO> results = serviceFacade.performExtensionRegistryClientConfigVerification(
+                        registryClientId, requestDto.getProperties(), requestDto.getAttributes());
+                asyncRequest.markStepComplete(results);
+            } catch (final Exception e) {
+                LOGGER.error("Failed to verify Extension Registry Client configuration", e);
+                asyncRequest.fail("Failed to verify Extension Registry Client configuration due to " + e);
+            }
+        };
+
+        configVerificationRequestManager.submitRequest(VERIFICATION_REQUEST_TYPE, requestId, request, verificationTask);
+
+        final VerifyConfigRequestEntity resultsEntity = createVerifyExtensionRegistryClientConfigRequestEntity(request, requestId);
+        return generateOkResponse(resultsEntity).build();
+    }
+
+    private VerifyConfigRequestEntity createVerifyExtensionRegistryClientConfigRequestEntity(
+            final AsynchronousWebRequest<VerifyConfigRequestEntity, List<ConfigVerificationResultDTO>> asyncRequest, final String requestId) {
+
+        final VerifyConfigRequestDTO requestDto = asyncRequest.getRequest().getRequest();
+        final List<ConfigVerificationResultDTO> resultsList = asyncRequest.getResults();
+
+        final VerifyConfigRequestDTO dto = new VerifyConfigRequestDTO();
+        dto.setComponentId(requestDto.getComponentId());
+        dto.setProperties(requestDto.getProperties());
+        dto.setAttributes(requestDto.getAttributes());
+        dto.setResults(resultsList);
+
+        dto.setComplete(asyncRequest.isComplete());
+        dto.setFailureReason(asyncRequest.getFailureReason());
+        dto.setLastUpdated(asyncRequest.getLastUpdated());
+        dto.setPercentCompleted(asyncRequest.getPercentComplete());
+        dto.setRequestId(requestId);
+        dto.setState(asyncRequest.getState());
+        dto.setUri(generateResourceUri("controller/extension-registry-clients", requestDto.getComponentId(), "config", "verification-requests", requestId));
+
+        final VerifyConfigRequestEntity entity = new VerifyConfigRequestEntity();
+        entity.setRequest(dto);
+        return entity;
+    }
+
     /**
      * Lists existing clients.
      *
@@ -2361,6 +2420,649 @@ public class ControllerResource extends ApplicationResource {
         }
 
         return flowRegistryClientsEntity;
+    }
+
+    // ----------
+    // extension registries
+    // ----------
+
+    /**
+     * Lists existing extension registry clients.
+     *
+     * @return An ExtensionRegistryClientsEntity which contains a set of ExtensionRegistryClientEntity
+     */
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients")
+    @Operation(
+            summary = "Gets the listing of available extension registry clients",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientsEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /flow")
+            }
+    )
+    public Response getExtensionRegistryClients() {
+        authorizeController(RequestAction.READ);
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        }
+
+        final Set<ExtensionRegistryClientEntity> extensionRegistryClients = serviceFacade.getExtensionRegistryClients();
+        final ExtensionRegistryClientsEntity extensionRegistryClientEntities = new ExtensionRegistryClientsEntity();
+        extensionRegistryClientEntities.setCurrentTime(new Date());
+        extensionRegistryClientEntities.setRegistries(extensionRegistryClients);
+
+        return generateOkResponse(populateRemainingExtensionRegistryClientEntityContent(extensionRegistryClientEntities)).build();
+    }
+
+    /**
+     * Creates a new extension registry client.
+     *
+     * @param requestExtensionRegistryClientEntity An extensionRegistryClientEntity.
+     * @return An ExtensionRegistryClientEntity.
+     */
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients")
+    @Operation(
+            summary = "Creates a new extension registry client",
+            responses = {
+                    @ApiResponse(responseCode = "201", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /controller")
+            }
+    )
+    public Response createExtensionRegistryClient(
+            @Parameter(
+                    description = "The extension registry client configuration details.",
+                    required = true
+            ) final ExtensionRegistryClientEntity requestExtensionRegistryClientEntity) {
+        authorizeController(RequestAction.READ);
+
+        if (requestExtensionRegistryClientEntity == null || requestExtensionRegistryClientEntity.getComponent() == null) {
+            throw new IllegalArgumentException("Extension Registry client details must be specified.");
+        }
+
+        if (requestExtensionRegistryClientEntity.getRevision() == null
+                || (requestExtensionRegistryClientEntity.getRevision().getVersion() == null
+                || requestExtensionRegistryClientEntity.getRevision().getVersion() != 0)) {
+            throw new IllegalArgumentException("A revision of 0 must be specified when creating a new extension Registry.");
+        }
+
+        final ExtensionRegistryClientDTO requestRegistryClient = requestExtensionRegistryClientEntity.getComponent();
+        if (requestRegistryClient.getId() != null) {
+            throw new IllegalArgumentException("Extension Registry ID cannot be specified.");
+        }
+
+        if (StringUtils.isBlank(requestRegistryClient.getName())) {
+            throw new IllegalArgumentException("Extension Registry name must be specified.");
+        }
+
+        if (requestRegistryClient.getType() == null) {
+            throw new IllegalArgumentException("The extension registry client type must be specified.");
+        }
+
+        if (serviceFacade.getExtensionRegistryClients().stream().anyMatch(rce -> requestRegistryClient.getName().equals(rce.getComponent().getName()))) {
+            throw new IllegalArgumentException("An Extension Registry already exists with the name " + requestRegistryClient.getName());
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.POST, requestExtensionRegistryClientEntity);
+        } else if (isDisconnectedFromCluster()) {
+            verifyDisconnectedNodeModification(requestExtensionRegistryClientEntity.isDisconnectedNodeAcknowledged());
+        }
+
+        return withWriteLock(
+                serviceFacade,
+                requestExtensionRegistryClientEntity,
+                lookup -> authorizeController(RequestAction.WRITE),
+                null,
+                (registryClientEntity) -> {
+                    final ExtensionRegistryClientDTO extensionRegistryClient = registryClientEntity.getComponent();
+
+                    extensionRegistryClient.setId(generateUuid());
+
+                    final Revision revision = getRevision(registryClientEntity, extensionRegistryClient.getId());
+                    final ExtensionRegistryClientEntity entity = serviceFacade.createExtensionRegistryClient(revision, extensionRegistryClient);
+                    populateRemainingExtensionRegistryClientEntityContent(entity);
+
+                    return generateCreatedResponse(URI.create(entity.getUri()), entity).build();
+                }
+        );
+    }
+
+    /**
+     * Retrieves the specified extension registry client.
+     *
+     * @param id The id of the extension registry client to retrieve
+     * @return An extensionRegistryClientEntity.
+     */
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/extension-registry-clients/{id}")
+    @Operation(
+            summary = "Gets an extension registry client",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /controller")
+            }
+    )
+    public Response getExtensionRegistryClient(
+            @Parameter(
+                    description = "The extension registry client id.",
+                    required = true
+            )
+            @PathParam("id") final String id) {
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        }
+
+        authorizeController(RequestAction.READ);
+
+        final ExtensionRegistryClientEntity entity = serviceFacade.getExtensionRegistryClient(id);
+        return generateOkResponse(populateRemainingExtensionRegistryClientEntityContent(entity)).build();
+    }
+
+    /**
+     * Updates the specified extension registry client.
+     *
+     * @param id The id of the extension registry client to update.
+     * @param requestExtensionRegistryClientEntity An extensionRegistryClientEntity.
+     * @return An extensionRegistryClientEntity.
+     */
+    @PUT
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/extension-registry-clients/{id}")
+    @Operation(
+            summary = "Updates an extension registry client",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /controller")
+            }
+    )
+    public Response updateExtensionRegistryClient(
+            @Parameter(
+                    description = "The extension registry client id.",
+                    required = true
+            )
+            @PathParam("id") final String id,
+            @Parameter(
+                    description = "The extension registry client configuration details.",
+                    required = true
+            ) final ExtensionRegistryClientEntity requestExtensionRegistryClientEntity) {
+
+        if (requestExtensionRegistryClientEntity == null || requestExtensionRegistryClientEntity.getComponent() == null) {
+            throw new IllegalArgumentException("Extension registry client details must be specified.");
+        }
+
+        if (requestExtensionRegistryClientEntity.getRevision() == null) {
+            throw new IllegalArgumentException("Revision must be specified.");
+        }
+
+        authorizeController(RequestAction.WRITE);
+
+        final ExtensionRegistryClientDTO requestRegistryClient = requestExtensionRegistryClientEntity.getComponent();
+        if (!id.equals(requestRegistryClient.getId())) {
+            throw new IllegalArgumentException(String.format("The extension registry client id (%s) in the request body does not equal the "
+                    + " id of the requested resource (%s).", requestRegistryClient.getId(), id));
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.PUT, requestExtensionRegistryClientEntity);
+        } else if (isDisconnectedFromCluster()) {
+            verifyDisconnectedNodeModification(requestExtensionRegistryClientEntity.isDisconnectedNodeAcknowledged());
+        }
+
+        if (requestRegistryClient.getName() != null && StringUtils.isBlank(requestRegistryClient.getName())) {
+            throw new IllegalArgumentException("Extension registry client name must be specified.");
+        }
+
+        final Revision requestRevision = getRevision(requestExtensionRegistryClientEntity, id);
+        return withWriteLock(
+                serviceFacade,
+                requestExtensionRegistryClientEntity,
+                requestRevision,
+                lookup -> authorizeController(RequestAction.WRITE),
+                null,
+                (revision, registryClientEntity) -> {
+                    final ExtensionRegistryClientDTO registry = registryClientEntity.getComponent();
+                    final ExtensionRegistryClientEntity entity = serviceFacade.updateExtensionRegistryClient(revision, registry);
+                    return generateOkResponse(populateRemainingExtensionRegistryClientEntityContent(entity)).build();
+                }
+        );
+    }
+
+    /**
+     * Removes the specified extension registry client.
+     *
+     * @param version The revision is used to verify the client is working with the latest version of the flow.
+     * @param clientId Optional client id. If the client id is not specified, a new one will be generated. This value (whether specified or generated) is included in the response.
+     * @param id The id of the extension registry client to remove.
+     * @return A entity containing the client id and an updated revision.
+     */
+    @DELETE
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/extension-registry-clients/{id}")
+    @Operation(
+            summary = "Deletes an extension registry client",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /controller")
+            }
+    )
+    public Response deleteExtensionRegistryClient(
+            @Parameter(
+                    description = "The revision is used to verify the client is working with the latest version of the flow."
+            )
+            @QueryParam(VERSION) final LongParameter version,
+            @Parameter(
+                    description = "If the client id is not specified, new one will be generated. This value (whether specified or generated) is included in the response."
+            )
+            @QueryParam(CLIENT_ID) @DefaultValue(StringUtils.EMPTY) final ClientIdParameter clientId,
+            @Parameter(
+                    description = "Acknowledges that this node is disconnected to allow for mutable requests to proceed."
+            )
+            @QueryParam(DISCONNECTED_NODE_ACKNOWLEDGED) @DefaultValue("false") final Boolean disconnectedNodeAcknowledged,
+            @Parameter(
+                    description = "The extension registry client id.",
+                    required = true
+            )
+            @PathParam("id") final String id) {
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.DELETE);
+        } else if (isDisconnectedFromCluster()) {
+            verifyDisconnectedNodeModification(disconnectedNodeAcknowledged);
+        }
+
+        authorizeController(RequestAction.WRITE);
+
+        final ExtensionRegistryClientEntity requestExtensionRegistryClientEntity = new ExtensionRegistryClientEntity();
+        requestExtensionRegistryClientEntity.setId(id);
+
+        final Revision requestRevision = new Revision(version == null ? null : version.getLong(), clientId.getClientId(), id);
+        return withWriteLock(
+                serviceFacade,
+                requestExtensionRegistryClientEntity,
+                requestRevision,
+                lookup -> authorizeController(RequestAction.WRITE),
+                () -> serviceFacade.verifyDeleteExtensionRegistry(id),
+                (revision, registryClientEntity) -> {
+                    final ExtensionRegistryClientEntity entity = serviceFacade.deleteExtensionRegistryClient(revision, registryClientEntity.getId());
+                    return generateOkResponse(populateRemainingExtensionRegistryClientEntityContent(entity)).build();
+                }
+        );
+    }
+
+    /**
+     * Returns the descriptor for the specified property.
+     *
+     * @param id The id of the extension registry client.
+     * @param propertyName The property
+     * @return a propertyDescriptorEntity
+     */
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/extension-registry-clients/{id}/descriptors")
+    @Operation(
+            summary = "Gets an extension registry client property descriptor",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = PropertyDescriptorEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /controller/extension-registry-clients/{uuid}")
+            }
+    )
+    public Response getExtensionRegistryClientPropertyDescriptor(
+            @Parameter(
+                    description = "The extension registry client id.",
+                    required = true
+            )
+            @PathParam("id") final String id,
+            @Parameter(
+                    description = "The property name.",
+                    required = true
+            )
+            @QueryParam("propertyName") final String propertyName,
+            @Parameter(description = "Property Descriptor requested sensitive status")
+            @QueryParam("sensitive") final boolean sensitive
+    ) {
+
+        if (propertyName == null) {
+            throw new IllegalArgumentException("The property name must be specified.");
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        }
+
+        authorizeController(RequestAction.READ);
+
+        final PropertyDescriptorDTO descriptor = serviceFacade.getExtensionRegistryClientPropertyDescriptor(id, propertyName, sensitive);
+
+        final PropertyDescriptorEntity entity = new PropertyDescriptorEntity();
+        entity.setPropertyDescriptor(descriptor);
+
+        return generateOkResponse(entity).build();
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients/{id}/config/analysis")
+    @Operation(
+            summary = "Performs analysis of the component's configuration, providing information about which attributes are referenced.",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ConfigurationAnalysisEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /controller")
+            }
+    )
+    public Response analyzeExtensionRegistryClientConfiguration(
+            @Parameter(description = "The extension registry client id.", required = true) @PathParam("id") final String registryClientId,
+            @Parameter(description = "The configuration analysis request.", required = true) final ConfigurationAnalysisEntity configurationAnalysis) {
+
+        if (configurationAnalysis == null || configurationAnalysis.getConfigurationAnalysis() == null) {
+            throw new IllegalArgumentException("Extension Registry Client's configuration must be specified");
+        }
+
+        final ConfigurationAnalysisDTO dto = configurationAnalysis.getConfigurationAnalysis();
+        if (dto.getComponentId() == null) {
+            throw new IllegalArgumentException("Extension Registry Client's identifier must be specified in the request");
+        }
+
+        if (!dto.getComponentId().equals(registryClientId)) {
+            throw new IllegalArgumentException("Extension Registry Client's identifier in the request must match the identifier provided in the URL");
+        }
+
+        if (dto.getProperties() == null) {
+            throw new IllegalArgumentException("Extension Registry Client's properties must be specified in the request");
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.POST, configurationAnalysis);
+        }
+
+        return withWriteLock(
+                serviceFacade,
+                configurationAnalysis,
+                lookup -> {
+                    final Authorizable authorizable = lookup.getExtensionRegistryClient(registryClientId).getAuthorizable();
+                    authorizable.authorize(authorizer, RequestAction.READ, NiFiUserUtils.getNiFiUser());
+                },
+                () -> {
+                },
+                entity -> {
+                    final ConfigurationAnalysisDTO analysis = entity.getConfigurationAnalysis();
+                    final ConfigurationAnalysisEntity resultsEntity = serviceFacade.analyzeExtensionRegistryClientConfiguration(analysis.getComponentId(), analysis.getProperties());
+                    return generateOkResponse(resultsEntity).build();
+                }
+        );
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients/{id}/config/verification-requests")
+    @Operation(
+            summary = "Performs verification of the Extension Registry Client's configuration",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = VerifyConfigRequestEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            description = "Initiates verification of an Extension Registry Client configuration. The request returns immediately "
+                    + "with a request entity while verification runs asynchronously. The client should poll "
+                    + "/controller/extension-registry-clients/{clientId}/config/verification-requests/{requestId} for status and "
+                    + "DELETE the request once verification completes.",
+            security = {
+                    @SecurityRequirement(name = "Read - /controller")
+            }
+    )
+    public Response submitExtensionRegistryClientConfigVerificationRequest(
+            @Parameter(description = "The extension registry client id.", required = true)
+            @PathParam("id") final String registryClientId,
+            @Parameter(description = "The extension registry client configuration verification request.", required = true) final VerifyConfigRequestEntity registryClientConfigRequest) {
+
+        if (registryClientConfigRequest == null) {
+            throw new IllegalArgumentException("Extension Registry Client's configuration must be specified");
+        }
+
+        final VerifyConfigRequestDTO requestDto = registryClientConfigRequest.getRequest();
+        if (requestDto == null || requestDto.getProperties() == null) {
+            throw new IllegalArgumentException("Extension Registry Client properties must be specified");
+        }
+
+        if (requestDto.getComponentId() == null) {
+            throw new IllegalArgumentException("Extension Registry Client's identifier must be specified in the request");
+        }
+
+        if (!requestDto.getComponentId().equals(registryClientId)) {
+            throw new IllegalArgumentException("Extension Registry Client's identifier in the request must match the identifier provided in the URL");
+        }
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.POST, registryClientConfigRequest);
+        }
+
+        final NiFiUser user = NiFiUserUtils.getNiFiUser();
+
+        return withWriteLock(
+                serviceFacade,
+                registryClientConfigRequest,
+                lookup -> {
+                    final Authorizable authorizable = lookup.getExtensionRegistryClient(registryClientId).getAuthorizable();
+                    authorizable.authorize(authorizer, RequestAction.READ, user);
+                },
+                () -> serviceFacade.verifyCanVerifyExtensionRegistryClientConfig(registryClientId),
+                entity -> performAsyncExtensionRegistryClientConfigVerification(entity, user)
+        );
+    }
+
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients/{id}/config/verification-requests/{requestId}")
+    @Operation(
+            summary = "Returns the Verification Request with the given ID",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = VerifyConfigRequestEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /controller")
+            }
+    )
+    public Response getExtensionRegistryClientConfigVerificationRequest(
+            @Parameter(description = "The ID of the extension registry client whose configuration was verified", required = true)
+            @PathParam("id") final String registryClientId,
+            @Parameter(description = "The ID of the Verification Request", required = true)
+            @PathParam("requestId") final String requestId) {
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        }
+
+        final NiFiUser user = NiFiUserUtils.getNiFiUser();
+
+        final AsynchronousWebRequest<VerifyConfigRequestEntity, List<ConfigVerificationResultDTO>> asyncRequest =
+                configVerificationRequestManager.getRequest(VERIFICATION_REQUEST_TYPE, requestId, user);
+
+        final VerifyConfigRequestEntity updateRequestEntity = createVerifyExtensionRegistryClientConfigRequestEntity(asyncRequest, requestId);
+        return generateOkResponse(updateRequestEntity).build();
+    }
+
+    @DELETE
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-clients/{id}/config/verification-requests/{requestId}")
+    @Operation(
+            summary = "Deletes the Verification Request with the given ID",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = VerifyConfigRequestEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /controller")
+            }
+    )
+    public Response deleteExtensionRegistryClientConfigVerificationRequest(
+            @Parameter(description = "The ID of the extension registry client whose configuration was verified", required = true)
+            @PathParam("id") final String registryClientId,
+            @Parameter(description = "The ID of the Verification Request", required = true)
+            @PathParam("requestId") final String requestId,
+            @Context final HttpServletRequest httpServletRequest) {
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.DELETE);
+        }
+
+        final NiFiUser user = NiFiUserUtils.getNiFiUser();
+        final boolean twoPhaseRequest = isTwoPhaseRequest(httpServletRequest);
+        final boolean executionPhase = isExecutionPhase(httpServletRequest);
+
+        if (!twoPhaseRequest || executionPhase) {
+            final AsynchronousWebRequest<VerifyConfigRequestEntity, List<ConfigVerificationResultDTO>> asyncRequest =
+                    configVerificationRequestManager.removeRequest(VERIFICATION_REQUEST_TYPE, requestId, user);
+
+            if (asyncRequest == null) {
+                throw new ResourceNotFoundException("Could not find request of type " + VERIFICATION_REQUEST_TYPE + " with ID " + requestId);
+            }
+
+            if (!asyncRequest.isComplete()) {
+                asyncRequest.cancel();
+            }
+
+            final VerifyConfigRequestEntity updateRequestEntity = createVerifyExtensionRegistryClientConfigRequestEntity(asyncRequest, requestId);
+            return generateOkResponse(updateRequestEntity).build();
+        }
+
+        if (isValidationPhase(httpServletRequest)) {
+            configVerificationRequestManager.getRequest(VERIFICATION_REQUEST_TYPE, requestId, user);
+            return generateContinueResponse().build();
+        } else if (isCancellationPhase(httpServletRequest)) {
+            return generateOkResponse().build();
+        } else {
+            throw new IllegalStateException("This request does not appear to be part of the two phase commit.");
+        }
+    }
+
+    /**
+     * Retrieves the types of extension registry clients that this NiFi supports.
+     *
+     * @return An extensionRegistryTypesEntity.
+     */
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("extension-registry-types")
+    @Operation(
+            summary = "Retrieves the types of extension registry clients that this NiFi supports",
+            description = NON_GUARANTEED_ENDPOINT,
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ExtensionRegistryClientTypesEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /flow")
+            }
+    )
+    public Response getExtensionRegistryClientTypes() {
+        authorizeController(RequestAction.READ);
+
+        if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        }
+
+        final ExtensionRegistryClientTypesEntity entity = new ExtensionRegistryClientTypesEntity();
+        entity.setExtensionRegistryClientTypes(serviceFacade.getExtensionRegistryTypes());
+
+        return generateOkResponse(entity).build();
+    }
+
+    /**
+     * Populate the uri's for the specified extension registry client and also extend the result to make it backward compatible.
+     *
+     * @param extensionRegistryClientEntity extension registry client
+     * @return the updated entity
+     */
+    private ExtensionRegistryClientEntity populateRemainingExtensionRegistryClientEntityContent(final ExtensionRegistryClientEntity extensionRegistryClientEntity) {
+        extensionRegistryClientEntity.setUri(generateResourceUri("controller", "extension-registry-clients", extensionRegistryClientEntity.getId()));
+        return extensionRegistryClientEntity;
+    }
+
+    /**
+     * Populate the uri's for all contained extension registry clients and also extend the result to make it backward compatible.
+     */
+    private ExtensionRegistryClientsEntity populateRemainingExtensionRegistryClientEntityContent(final ExtensionRegistryClientsEntity extensionRegistryClientEntity) {
+        for (final ExtensionRegistryClientEntity entity : extensionRegistryClientEntity.getRegistries()) {
+            populateRemainingExtensionRegistryClientEntityContent(entity);
+        }
+        return extensionRegistryClientEntity;
     }
 
     // -------------------

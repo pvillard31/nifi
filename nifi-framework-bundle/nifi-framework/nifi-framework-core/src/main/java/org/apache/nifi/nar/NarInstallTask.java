@@ -25,6 +25,7 @@ import org.apache.nifi.controller.service.ControllerServiceProvider;
 import org.apache.nifi.flowanalysis.FlowAnalysisRule;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.processor.Processor;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.reporting.ReportingTask;
 import org.slf4j.Logger;
@@ -53,6 +54,7 @@ public class NarInstallTask implements Runnable {
             ControllerService.class,
             ReportingTask.class,
             FlowRegistryClient.class,
+            ExtensionRegistryClient.class,
             FlowAnalysisRule.class,
             ParameterProvider.class
     );

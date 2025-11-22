@@ -55,6 +55,7 @@ import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.c2.protocol.component.api.ControllerServiceDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowRegistryClientDefinition;
+import org.apache.nifi.c2.protocol.component.api.ExtensionRegistryClientDefinition;
 import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
 import org.apache.nifi.c2.protocol.component.api.ProcessorDefinition;
 import org.apache.nifi.c2.protocol.component.api.ReportingTaskDefinition;
@@ -79,6 +80,7 @@ import org.apache.nifi.components.Validator;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.components.validation.ValidationState;
+import org.apache.nifi.components.validation.ValidationStatus;
 import org.apache.nifi.connectable.Connectable;
 import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.connectable.Funnel;
@@ -172,11 +174,15 @@ import org.apache.nifi.prometheusutil.ConnectionAnalyticsMetricsRegistry;
 import org.apache.nifi.prometheusutil.JvmMetricsRegistry;
 import org.apache.nifi.prometheusutil.NiFiMetricsRegistry;
 import org.apache.nifi.prometheusutil.PrometheusMetricsUtil;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientContextFactory;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowLocation;
 import org.apache.nifi.registry.flow.FlowRegistryBranch;
 import org.apache.nifi.registry.flow.FlowRegistryBucket;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientContextFactory;
+import org.apache.nifi.registry.extension.VerifiableExtensionRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientUserContext;
 import org.apache.nifi.registry.flow.FlowRegistryException;
@@ -252,6 +258,7 @@ import org.apache.nifi.web.api.dto.DocumentedTypeDTO;
 import org.apache.nifi.web.api.dto.DropRequestDTO;
 import org.apache.nifi.web.api.dto.DtoFactory;
 import org.apache.nifi.web.api.dto.EntityFactory;
+import org.apache.nifi.web.api.dto.ExtensionRegistryClientDTO;
 import org.apache.nifi.web.api.dto.FlowAnalysisRuleDTO;
 import org.apache.nifi.web.api.dto.FlowAnalysisRuleViolationDTO;
 import org.apache.nifi.web.api.dto.FlowConfigurationDTO;
@@ -343,6 +350,7 @@ import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEnti
 import org.apache.nifi.web.api.entity.CopyRequestEntity;
 import org.apache.nifi.web.api.entity.CopyResponseEntity;
 import org.apache.nifi.web.api.entity.CurrentUserEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisResultEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowBreadcrumbEntity;
@@ -398,6 +406,7 @@ import org.apache.nifi.web.controller.ControllerFacade;
 import org.apache.nifi.web.dao.AccessPolicyDAO;
 import org.apache.nifi.web.dao.ConnectionDAO;
 import org.apache.nifi.web.dao.ControllerServiceDAO;
+import org.apache.nifi.web.dao.ExtensionRegistryDAO;
 import org.apache.nifi.web.dao.FlowAnalysisRuleDAO;
 import org.apache.nifi.web.dao.FlowRegistryDAO;
 import org.apache.nifi.web.dao.FunnelDAO;
@@ -493,6 +502,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     private UserGroupDAO userGroupDAO;
     private AccessPolicyDAO accessPolicyDAO;
     private FlowRegistryDAO flowRegistryDAO;
+    private ExtensionRegistryDAO extensionRegistryDAO;
     private ParameterContextDAO parameterContextDAO;
     private ClusterCoordinator clusterCoordinator;
     private HeartbeatMonitor heartbeatMonitor;
@@ -674,6 +684,11 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     @Override
     public void verifyCanVerifyFlowRegistryClientConfig(final String registryClientId) {
         flowRegistryDAO.verifyConfigVerification(registryClientId);
+    }
+
+    @Override
+    public void verifyCanVerifyExtensionRegistryClientConfig(final String registryClientId) {
+        extensionRegistryDAO.verifyConfigVerification(registryClientId);
     }
 
     @Override
@@ -1096,6 +1111,8 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
             return ((ReportingTaskNode) componentNode).getReportingTask() instanceof VerifiableReportingTask;
         } else if (componentNode instanceof FlowRegistryClientNode) {
             return componentNode.getComponent() instanceof VerifiableFlowRegistryClient;
+        } else if (componentNode instanceof ExtensionRegistryClientNode) {
+            return componentNode.getComponent() instanceof VerifiableExtensionRegistryClient;
         } else {
             return false;
         }
@@ -1131,6 +1148,12 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     private void awaitValidationCompletion(final ComponentNode component) {
         component.getValidationStatus(VALIDATION_WAIT_MILLIS, TimeUnit.MILLISECONDS);
+    }
+
+    private void triggerExtensionRegistryDiscoveryIfValid(final ExtensionRegistryClientNode client) {
+        if (client.getValidationStatus() == ValidationStatus.VALID) {
+            controllerFacade.getExtensionRegistriesManager().discoverExtensions(true);
+        }
     }
 
     @Override
@@ -3218,7 +3241,6 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         return entityFactory.createControllerServiceEntity(snapshot, null, permissions, operatePermissions, null);
     }
 
-
     @Override
     public FlowRegistryClientEntity createRegistryClient(final Revision revision, final FlowRegistryClientDTO flowRegistryClientDTO) {
         final NiFiUser user = NiFiUserUtils.getNiFiUser();
@@ -3428,6 +3450,129 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public Set<DocumentedTypeDTO> getExtensionRegistryTypes() {
+        return controllerFacade.getExtensionRegistryTypes();
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity createExtensionRegistryClient(Revision revision, ExtensionRegistryClientDTO extensionRegistryClientDTO) {
+        final NiFiUser user = NiFiUserUtils.getNiFiUser();
+
+        // request claim for component to be created... revision already verified (version == 0)
+        final RevisionClaim claim = new StandardRevisionClaim(revision);
+
+        // update revision through revision manager
+        final RevisionUpdate<ExtensionRegistryClientDTO> snapshot = revisionManager.updateRevision(claim, user, () -> {
+            // add the component
+            final ExtensionRegistryClientNode registryClient = extensionRegistryDAO.createExtensionRegistryClient(extensionRegistryClientDTO);
+
+            // save the flow
+            controllerFacade.save();
+            awaitValidationCompletion(registryClient);
+            triggerExtensionRegistryDiscoveryIfValid(registryClient);
+
+
+            final ExtensionRegistryClientDTO dto = dtoFactory.createExtensionRegistryDto(registryClient);
+            final FlowModification lastMod = new FlowModification(revision.incrementRevision(revision.getClientId()), user.getIdentity());
+            return new StandardRevisionUpdate<>(dto, lastMod);
+        });
+
+        return createExtensionRegistryClientEntity(extensionRegistryClientDTO, snapshot);
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity getExtensionRegistryClient(String registryClientId) {
+        final ExtensionRegistryClientNode extensionRegistryClient = extensionRegistryDAO.getExtensionRegistryClient(registryClientId);
+        return createExtensionRegistryClientEntity(extensionRegistryClient);
+    }
+
+    @Override
+    public Set<ExtensionRegistryClientEntity> getExtensionRegistryClients() {
+        return extensionRegistryDAO.getExtensionRegistryClients().stream()
+                .map(this::createExtensionRegistryClientEntity)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public Set<ExtensionRegistryClientEntity> getExtensionRegistryClientsForUser() {
+        return extensionRegistryDAO.getExtensionRegistryClientsForUser(ExtensionRegistryClientContextFactory.getContextForUser(NiFiUserUtils.getNiFiUser())).stream()
+                .map(this::createExtensionRegistryClientEntity)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public PropertyDescriptorDTO getExtensionRegistryClientPropertyDescriptor(String id, String property, boolean sensitive) {
+        final ExtensionRegistryClientNode extensionRegistryClient = extensionRegistryDAO.getExtensionRegistryClient(id);
+        final PropertyDescriptor descriptor = getPropertyDescriptor(extensionRegistryClient, property, sensitive);
+        return dtoFactory.createPropertyDescriptorDto(descriptor, null);
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity updateExtensionRegistryClient(Revision revision, ExtensionRegistryClientDTO extensionRegistryClientDTO) {
+        final ExtensionRegistryClientNode extensionRegistryClient = extensionRegistryDAO.getExtensionRegistryClient(extensionRegistryClientDTO.getId());
+
+        final RevisionUpdate<ExtensionRegistryClientDTO> snapshot = updateComponent(revision,
+                extensionRegistryClient,
+                () -> extensionRegistryDAO.updateExtensionRegistryClient(extensionRegistryClientDTO),
+                client -> {
+                    awaitValidationCompletion(client);
+                    triggerExtensionRegistryDiscoveryIfValid(client);
+                    return dtoFactory.createExtensionRegistryDto(client);
+                });
+
+        final PermissionsDTO permissions = dtoFactory.createPermissionsDto(extensionRegistryClient);
+        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(extensionRegistryClient));
+        final List<BulletinDTO> bulletins = dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForSource(extensionRegistryClient.getIdentifier()));
+        final List<BulletinEntity> bulletinEntities = bulletins.stream()
+                .map(bulletin -> entityFactory.createBulletinEntity(bulletin, permissions.getCanRead()))
+                .collect(Collectors.toList());
+        return entityFactory.createExtensionRegistryClientEntity(
+                snapshot.getComponent(),
+                dtoFactory.createRevisionDTO(snapshot.getLastModification()),
+                permissions,
+                operatePermissions,
+                bulletinEntities);
+    }
+
+    @Override
+    public ExtensionRegistryClientEntity deleteExtensionRegistryClient(Revision revision, String registryClientId) {
+        final ExtensionRegistryClientNode extensionRegistryClient = extensionRegistryDAO.getExtensionRegistryClient(registryClientId);
+        final PermissionsDTO permissions = dtoFactory.createPermissionsDto(extensionRegistryClient);
+        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(extensionRegistryClient));
+        final ExtensionRegistryClientDTO snapshot = deleteComponent(
+                revision,
+                extensionRegistryClient.getResource(),
+                () -> extensionRegistryDAO.removeExtensionRegistryClient(registryClientId),
+                true,
+                dtoFactory.createExtensionRegistryDto(extensionRegistryClient)
+        );
+
+        return entityFactory.createExtensionRegistryClientEntity(snapshot, null, permissions, operatePermissions, null);
+    }
+
+    @Override
+    public void verifyDeleteExtensionRegistry(String registryClientId) {
+        extensionRegistryDAO.verifyDeleteExtensionRegistry(registryClientId);
+    }
+
+    private ExtensionRegistryClientEntity createExtensionRegistryClientEntity(final ExtensionRegistryClientDTO extensionRegistryClientDTO, final RevisionUpdate<ExtensionRegistryClientDTO> snapshot) {
+        final ExtensionRegistryClientNode extensionRegistryClient = extensionRegistryDAO.getExtensionRegistryClient(extensionRegistryClientDTO.getId());
+        final PermissionsDTO permissions = dtoFactory.createPermissionsDto(authorizableLookup.getController());
+        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(authorizableLookup.getController()));
+        final List<BulletinDTO> bulletins = dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForSource(extensionRegistryClient.getIdentifier()));
+        final List<BulletinEntity> bulletinEntities = bulletins.stream().map(bulletin -> entityFactory.createBulletinEntity(bulletin, permissions.getCanRead())).collect(Collectors.toList());
+        final RevisionDTO revisionDto = dtoFactory.createRevisionDTO(revisionManager.getRevision(extensionRegistryClientDTO.getId()));
+        return entityFactory.createExtensionRegistryClientEntity(snapshot.getComponent(), revisionDto, permissions, operatePermissions, bulletinEntities);
+    }
+
+    private ExtensionRegistryClientEntity createExtensionRegistryClientEntity(final ExtensionRegistryClientNode extensionRegistryClientNode) {
+        final RevisionDTO revision = dtoFactory.createRevisionDTO(revisionManager.getRevision(extensionRegistryClientNode.getIdentifier()));
+        final PermissionsDTO permissions = dtoFactory.createPermissionsDto(authorizableLookup.getController());
+        final ExtensionRegistryClientDTO dto = dtoFactory.createExtensionRegistryDto(extensionRegistryClientNode);
+        return entityFactory.createExtensionRegistryClientEntity(dto, revision, permissions);
+    }
+
+    @Override
     public ReportingTaskEntity createReportingTask(final Revision revision, final ReportingTaskDTO reportingTaskDTO) {
         final NiFiUser user = NiFiUserUtils.getNiFiUser();
 
@@ -3567,8 +3712,22 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     }
 
     @Override
+    public List<ConfigVerificationResultDTO> performExtensionRegistryClientConfigVerification(final String registryClientId,
+                                                                                               final Map<String, String> properties,
+                                                                                               final Map<String, String> variables) {
+        return extensionRegistryDAO.verifyConfiguration(registryClientId, properties, variables);
+    }
+
+    @Override
     public ConfigurationAnalysisEntity analyzeFlowRegistryClientConfiguration(final String registryClientId, final Map<String, String> properties) {
         final FlowRegistryClientNode registryClientNode = flowRegistryDAO.getFlowRegistryClient(registryClientId);
+        final ConfigurationAnalysisEntity configurationAnalysisEntity = analyzeConfiguration(registryClientNode, properties, null);
+        return configurationAnalysisEntity;
+    }
+
+    @Override
+    public ConfigurationAnalysisEntity analyzeExtensionRegistryClientConfiguration(final String registryClientId, final Map<String, String> properties) {
+        final ExtensionRegistryClientNode registryClientNode = extensionRegistryDAO.getExtensionRegistryClient(registryClientId);
         final ConfigurationAnalysisEntity configurationAnalysisEntity = analyzeConfiguration(registryClientNode, properties, null);
         return configurationAnalysisEntity;
     }
@@ -3995,6 +4154,15 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
             throw new ResourceNotFoundException("Unable to find definition for [%s:%s:%s:%s]".formatted(group, artifact, version, type));
         }
         return flowRegistryClientDefinition;
+    }
+
+    @Override
+    public ExtensionRegistryClientDefinition getExtensionRegistryClientDefinition(String group, String artifact, String version, String type) {
+        final ExtensionRegistryClientDefinition extensionRegistryClientDefinition = controllerFacade.getExtensionRegistryClientDefinition(group, artifact, version, type);
+        if (extensionRegistryClientDefinition == null) {
+            throw new ResourceNotFoundException("Unable to find definition for [%s:%s:%s:%s]".formatted(group, artifact, version, type));
+        }
+        return extensionRegistryClientDefinition;
     }
 
     @Override
@@ -7037,6 +7205,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         componentTypesEntity.setParameterProviderTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ParameterProvider.class)));
         componentTypesEntity.setFlowRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowRegistryClient.class)));
         componentTypesEntity.setFlowAnalysisRuleTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowAnalysisRule.class)));
+        componentTypesEntity.setExtensionRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ExtensionRegistryClient.class)));
         return componentTypesEntity;
     }
 
@@ -7410,6 +7579,11 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     @Autowired
     public void setFlowRegistryDAO(FlowRegistryDAO flowRegistryDao) {
         this.flowRegistryDAO = flowRegistryDao;
+    }
+
+    @Autowired
+    public void setExtensionRegistryDAO(ExtensionRegistryDAO extensionRegistryDao) {
+        this.extensionRegistryDAO = extensionRegistryDao;
     }
 
     @Autowired

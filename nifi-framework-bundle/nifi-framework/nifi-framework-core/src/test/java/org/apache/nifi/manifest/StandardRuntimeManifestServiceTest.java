@@ -65,7 +65,7 @@ public class StandardRuntimeManifestServiceTest {
                 .workingDir(new File("src/test/resources/TestRuntimeManifest/nifi-framework-nar"))
                 .build();
 
-        frameworkBundle = new Bundle(frameworkBundleDetails, this.getClass().getClassLoader());
+        frameworkBundle = new Bundle(frameworkBundleDetails, this.getClass().getClassLoader(), false);
 
         final BundleDetails testComponentsBundleDetails = new BundleDetails.Builder()
                 .coordinate(new BundleCoordinate("org.apache.nifi", "nifi-test-components-nar", "1.16.0"))
@@ -75,14 +75,14 @@ public class StandardRuntimeManifestServiceTest {
                 .workingDir(new File("src/test/resources/TestRuntimeManifest/nifi-test-components-nar"))
                 .build();
 
-        testComponentsBundle = new Bundle(testComponentsBundleDetails, this.getClass().getClassLoader());
+        testComponentsBundle = new Bundle(testComponentsBundleDetails, this.getClass().getClassLoader(), false);
 
         final BundleDetails testPythonComponentsBundleDetails = new BundleDetails.Builder()
                 .coordinate(PythonBundle.PYTHON_BUNDLE_COORDINATE)
                 .workingDir(new File("src/test/resources/TestRuntimeManifest/nifi-test-python-components-nar"))
                 .build();
 
-        testPythonComponentsBundle = new Bundle(testPythonComponentsBundleDetails, this.getClass().getClassLoader());
+        testPythonComponentsBundle = new Bundle(testPythonComponentsBundleDetails, this.getClass().getClassLoader(), false);
 
         extensionManager = mock(ExtensionManager.class);
         extensionManifestParser = new JAXBExtensionManifestParser();

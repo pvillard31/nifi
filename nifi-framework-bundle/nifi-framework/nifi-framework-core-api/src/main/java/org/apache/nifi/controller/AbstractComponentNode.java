@@ -24,7 +24,7 @@ import org.apache.nifi.attribute.expression.language.VariableImpact;
 import org.apache.nifi.bundle.Bundle;
 import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.components.AllowableValue;
-import org.apache.nifi.components.AsyncLoadedProcessor;
+import org.apache.nifi.components.AsyncLoadedComponent;
 import org.apache.nifi.components.ClassloaderIsolationKeyProvider;
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.ConfigVerificationResult.Outcome;
@@ -888,7 +888,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
             }
 
             final ConfigurableComponent component = getComponent();
-            if (component instanceof final AsyncLoadedProcessor asyncLoadedProcessor) {
+            if (component instanceof final AsyncLoadedComponent asyncLoadedProcessor) {
                 if (!asyncLoadedProcessor.isLoaded()) {
                     final String explanation = switch (asyncLoadedProcessor.getState()) {
                         case INITIALIZING_ENVIRONMENT -> "Initializing runtime environment for the Processor.";
@@ -1498,7 +1498,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
             }
 
             boolean cacheValidationContext = true;
-            if (getComponent() instanceof final AsyncLoadedProcessor asyncLoadedProcessor) {
+            if (getComponent() instanceof final AsyncLoadedComponent asyncLoadedProcessor) {
                 cacheValidationContext = asyncLoadedProcessor.isLoaded();
             }
 

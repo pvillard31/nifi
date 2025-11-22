@@ -55,7 +55,8 @@ export class PropertyDefinitionComponent {
                 selectServiceImplementations(serviceType.type, {
                     group: serviceType.group,
                     artifact: serviceType.artifact,
-                    version: serviceType.version
+                    version: serviceType.version,
+					isRemote: false
                 })
             );
         }

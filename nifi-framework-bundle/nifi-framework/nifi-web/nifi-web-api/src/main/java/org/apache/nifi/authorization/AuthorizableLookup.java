@@ -237,10 +237,18 @@ public interface AuthorizableLookup {
     /**
      * Get the authorizable FlowRegistryClient.
      *
-     * @param id reporting task id
+     * @param id flow registry client id
      * @return authorizable
      */
     ComponentAuthorizable getFlowRegistryClient(String id);
+
+    /**
+     * Get the authorizable ExtensionRegistryClient.
+     *
+     * @param id extension registry client id
+     * @return authorizable
+     */
+    ComponentAuthorizable getExtensionRegistryClient(String id);
 
     /**
      * Get the authorizable Parameter Context

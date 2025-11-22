@@ -18,19 +18,21 @@
 package org.apache.nifi.controller.flow;
 
 import org.apache.nifi.flow.VersionedControllerService;
+import org.apache.nifi.flow.VersionedExtensionRegistryClient;
 import org.apache.nifi.flow.VersionedFlowAnalysisRule;
 import org.apache.nifi.flow.VersionedFlowRegistryClient;
+import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedParameterProvider;
 import org.apache.nifi.flow.VersionedProcessGroup;
 import org.apache.nifi.flow.VersionedReportingTask;
-import org.apache.nifi.flow.VersionedParameterContext;
 
 import java.util.List;
 
 public class VersionedDataflow {
     private VersionedFlowEncodingVersion encodingVersion;
     private int maxTimerDrivenThreadCount;
-    private List<VersionedFlowRegistryClient> registries;
+    private List<VersionedFlowRegistryClient> flowRegistries;
+    private List<VersionedExtensionRegistryClient> extensionRegistries;
     private List<VersionedParameterContext> parameterContexts;
     private List<VersionedParameterProvider> parameterProviders;
     private List<VersionedControllerService> controllerServices;
@@ -55,11 +57,19 @@ public class VersionedDataflow {
     }
 
     public List<VersionedFlowRegistryClient> getRegistries() {
-        return registries;
+        return flowRegistries;
     }
 
     public void setRegistries(final List<VersionedFlowRegistryClient> registries) {
-        this.registries = registries;
+        this.flowRegistries = registries;
+    }
+
+    public List<VersionedExtensionRegistryClient> getExtensionRegistries() {
+        return extensionRegistries;
+    }
+
+    public void setExtensionRegistries(final List<VersionedExtensionRegistryClient> registries) {
+        this.extensionRegistries = registries;
     }
 
     public List<VersionedParameterContext> getParameterContexts() {

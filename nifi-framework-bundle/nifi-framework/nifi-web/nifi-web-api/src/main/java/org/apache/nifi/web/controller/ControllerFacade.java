@@ -36,6 +36,7 @@ import org.apache.nifi.c2.protocol.component.api.ComponentManifest;
 import org.apache.nifi.c2.protocol.component.api.ControllerServiceDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
 import org.apache.nifi.c2.protocol.component.api.FlowRegistryClientDefinition;
+import org.apache.nifi.c2.protocol.component.api.ExtensionRegistryClientDefinition;
 import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
 import org.apache.nifi.c2.protocol.component.api.ProcessorDefinition;
 import org.apache.nifi.c2.protocol.component.api.ReportingTaskDefinition;
@@ -88,6 +89,7 @@ import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.manifest.RuntimeManifestService;
 import org.apache.nifi.nar.ExtensionDefinition;
 import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.nar.ExtensionRegistriesManager;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.Relationship;
@@ -101,6 +103,7 @@ import org.apache.nifi.provenance.search.QuerySubmission;
 import org.apache.nifi.provenance.search.SearchTerm;
 import org.apache.nifi.provenance.search.SearchTerms;
 import org.apache.nifi.provenance.search.SearchableField;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.PublicPort;
@@ -221,6 +224,10 @@ public class ControllerFacade implements Authorizable {
         return flowController.getExtensionManager();
     }
 
+    public ExtensionRegistriesManager getExtensionRegistriesManager() {
+        return flowController.getExtensionRegistriesManager();
+    }
+
     public FlowManager getFlowManager() {
         return flowController.getFlowManager();
     }
@@ -264,6 +271,11 @@ public class ControllerFacade implements Authorizable {
     public ConfigurableComponent getTemporaryComponent(final String type, final BundleDTO bundle) {
         final ExtensionManager extensionManager = getExtensionManager();
         final BundleCoordinate bundleCoordinate = BundleUtils.getBundle(extensionManager, type, bundle);
+
+        if (extensionManager.isRemoteBundle(bundleCoordinate)) {
+            this.flowController.installRemoteBundle(bundleCoordinate);
+        }
+
         final ConfigurableComponent configurableComponent = extensionManager.getTempComponent(type, bundleCoordinate);
 
         if (configurableComponent == null) {
@@ -536,44 +548,51 @@ public class ControllerFacade implements Authorizable {
                                                             final String bundleGroupFilter, final String bundleArtifactFilter, final String typeFilter) {
 
         final Set<ExtensionDefinition> extensionDefinitions = getExtensionManager().getExtensions(ControllerService.class);
+        final Set<ExtensionDefinition> filteredDefinitions = new HashSet<>();
 
         // identify the controller services that implement the specified serviceType if applicable
         if (serviceType != null) {
-            final BundleCoordinate bundleCoordinate = new BundleCoordinate(serviceBundleGroup, serviceBundleArtifact, serviceBundleVersion);
-            final Bundle csBundle = getExtensionManager().getBundle(bundleCoordinate);
-            if (csBundle == null) {
-                throw new IllegalStateException("Unable to find bundle for coordinate " + bundleCoordinate.getCoordinate());
-            }
-
             Class serviceClass = null;
-            final ClassLoader currentContextClassLoader = Thread.currentThread().getContextClassLoader();
-            try {
-                Thread.currentThread().setContextClassLoader(csBundle.getClassLoader());
-                serviceClass = Class.forName(serviceType, false, csBundle.getClassLoader());
-            } catch (final Exception e) {
-                Thread.currentThread().setContextClassLoader(currentContextClassLoader);
-                throw new IllegalArgumentException(String.format("Unable to load %s from bundle %s: %s", serviceType, bundleCoordinate, e), e);
-            }
-
-            final Map<Class, Bundle> matchingServiceImplementations = new HashMap<>();
-
-            // check each type and remove those that aren't in the specified ancestry
-            for (final ExtensionDefinition extensionDefinition : extensionDefinitions) {
-                final Class csClass = getExtensionManager().getClass(extensionDefinition);
-                if (implementsServiceType(serviceClass, csClass)) {
-                    // We need to protect against null here because after retrieving the set of extension definitions from the ExtensionManager, a custom NAR that is part
-                    // of the NAR Manager may be deleted/replaced which causes its bundle to be removed from the ExtensionManager before reaching this getBundle call
-                    final Bundle csImplBundle = getExtensionManager().getBundle(csClass.getClassLoader());
-                    if (csImplBundle != null) {
-                        matchingServiceImplementations.put(csClass, csImplBundle);
+            // If bundle coordinates are provided try to load, otherwise rely solely on provided API info.
+            if (serviceBundleGroup != null && serviceBundleArtifact != null && serviceBundleVersion != null) {
+                final BundleCoordinate bundleCoordinate = new BundleCoordinate(serviceBundleGroup, serviceBundleArtifact, serviceBundleVersion);
+                final Bundle csBundle = getExtensionManager().getBundle(bundleCoordinate);
+                if (csBundle != null) {
+                    final ClassLoader currentContextClassLoader = Thread.currentThread().getContextClassLoader();
+                    try {
+                        Thread.currentThread().setContextClassLoader(csBundle.getClassLoader());
+                        serviceClass = Class.forName(serviceType, false, csBundle.getClassLoader());
+                    } catch (final Exception e) {
+                        logger.warn("Unable to load {} from bundle {}; will rely on provided service API declarations instead: {}", serviceType, bundleCoordinate.getCoordinate(), e.getMessage());
+                    } finally {
+                        Thread.currentThread().setContextClassLoader(currentContextClassLoader);
                     }
                 }
             }
 
-            return dtoFactory.fromDocumentedTypes(matchingServiceImplementations, bundleGroupFilter, bundleArtifactFilter, typeFilter);
+            for (final ExtensionDefinition extensionDefinition : extensionDefinitions) {
+                // Prefer manifest-provided service APIs for matching to avoid classloading remote types
+                boolean matches = extensionDefinition.getProvidedServiceAPIs().stream()
+                        .anyMatch(api -> serviceType.equals(api.getClassName()));
+
+                if (!matches && serviceClass != null && !extensionDefinition.getBundle().isRemote()) {
+                    try {
+                        final Class csClass = getExtensionManager().getClass(extensionDefinition);
+                        matches = implementsServiceType(serviceClass, csClass);
+                    } catch (final Throwable t) {
+                        logger.warn("Unable to get extension class for [{}]", extensionDefinition.getImplementationClassName(), t);
+                    }
+                }
+
+                if (matches) {
+                    filteredDefinitions.add(extensionDefinition);
+                }
+            }
         } else {
-            return dtoFactory.fromDocumentedTypes(extensionDefinitions, bundleGroupFilter, bundleArtifactFilter, typeFilter);
+            filteredDefinitions.addAll(extensionDefinitions);
         }
+
+        return dtoFactory.fromDocumentedTypes(filteredDefinitions, bundleGroupFilter, bundleArtifactFilter, typeFilter);
     }
 
     /**
@@ -607,6 +626,15 @@ public class ControllerFacade implements Authorizable {
      */
     public Set<DocumentedTypeDTO> getFlowRegistryTypes() {
         return dtoFactory.fromDocumentedTypes(getExtensionManager().getExtensions(FlowRegistryClient.class), null, null, null);
+    }
+
+    /**
+     * Gets the ExtensionRegistryClient types that this controller supports.
+     *
+     * @return the ExtensionRegistryClient types that this controller supports
+     */
+    public Set<DocumentedTypeDTO> getExtensionRegistryTypes() {
+        return dtoFactory.fromDocumentedTypes(getExtensionManager().getExtensions(ExtensionRegistryClient.class), null, null, null);
     }
 
     /**
@@ -657,6 +685,15 @@ public class ControllerFacade implements Authorizable {
             return null;
         }
         return flowRegistryClientDefinitions.stream().filter(flowRegistryClientDefinition -> type.equals(flowRegistryClientDefinition.getType())).findFirst().orElse(null);
+    }
+
+    public ExtensionRegistryClientDefinition getExtensionRegistryClientDefinition(String group, String artifact, String version, String type) {
+        final ComponentManifest componentManifest = getComponentManifest(group, artifact, version);
+        final List<ExtensionRegistryClientDefinition> extensionRegistryClientDefinitions = componentManifest.getExtensionRegistryClients();
+        if (extensionRegistryClientDefinitions == null) {
+            return null;
+        }
+        return extensionRegistryClientDefinitions.stream().filter(extensionRegistryClientDefinition -> type.equals(extensionRegistryClientDefinition.getType())).findFirst().orElse(null);
     }
 
     public FlowAnalysisRuleDefinition getFlowAnalysisRuleDefinition(String group, String artifact, String version, String type) {

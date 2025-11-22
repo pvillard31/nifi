@@ -55,6 +55,7 @@ import org.apache.nifi.flow.Position;
 import org.apache.nifi.flow.VersionedAsset;
 import org.apache.nifi.flow.VersionedConnection;
 import org.apache.nifi.flow.VersionedControllerService;
+import org.apache.nifi.flow.VersionedExtensionRegistryClient;
 import org.apache.nifi.flow.VersionedFlowAnalysisRule;
 import org.apache.nifi.flow.VersionedFlowCoordinates;
 import org.apache.nifi.flow.VersionedFlowRegistryClient;
@@ -87,6 +88,7 @@ import org.apache.nifi.parameter.ParameterReferencedControllerServiceData;
 import org.apache.nifi.parameter.ParameterValueMapper;
 import org.apache.nifi.parameter.StandardParameterValueMapper;
 import org.apache.nifi.processor.Relationship;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.VersionControlInformation;
 import org.apache.nifi.remote.PublicPort;
@@ -477,6 +479,27 @@ public class NiFiRegistryFlowMapper {
         versionedClient.setAnnotationData(clientNode.getAnnotationData());
         versionedClient.setBundle(mapBundle(clientNode.getBundleCoordinate()));
         versionedClient.setComponentType(ComponentType.FLOW_REGISTRY_CLIENT);
+        versionedClient.setName(clientNode.getName());
+        versionedClient.setDescription(clientNode.getDescription());
+
+        versionedClient.setProperties(mapProperties(clientNode, serviceProvider));
+        versionedClient.setPropertyDescriptors(mapPropertyDescriptors(clientNode, serviceProvider, Collections.emptySet(), Collections.emptyMap()));
+        versionedClient.setType(clientNode.getCanonicalClassName());
+
+        return versionedClient;
+    }
+
+    public VersionedExtensionRegistryClient mapExtensionRegistryClient(final ExtensionRegistryClientNode clientNode, final ControllerServiceProvider serviceProvider) {
+        final VersionedExtensionRegistryClient versionedClient = new VersionedExtensionRegistryClient();
+        versionedClient.setIdentifier(clientNode.getIdentifier());
+
+        if (flowMappingOptions.isMapInstanceIdentifiers()) {
+            versionedClient.setInstanceIdentifier(clientNode.getIdentifier());
+        }
+
+        versionedClient.setAnnotationData(clientNode.getAnnotationData());
+        versionedClient.setBundle(mapBundle(clientNode.getBundleCoordinate()));
+        versionedClient.setComponentType(ComponentType.EXTENSION_REGISTRY_CLIENT);
         versionedClient.setName(clientNode.getName());
         versionedClient.setDescription(clientNode.getDescription());
 
@@ -978,7 +1001,7 @@ public class NiFiRegistryFlowMapper {
         reference.setIdentifier(parameterProvider.getIdentifier());
         reference.setName(parameterProviderNode.getName());
         reference.setType(parameterProvider.getClass().getName());
-        reference.setBundle(new Bundle(bundleCoordinate.getGroup(), bundleCoordinate.getId(), bundleCoordinate.getVersion()));
+        reference.setBundle(new Bundle(bundleCoordinate.getGroup(), bundleCoordinate.getId(), bundleCoordinate.getVersion(), false));
 
         return reference;
     }

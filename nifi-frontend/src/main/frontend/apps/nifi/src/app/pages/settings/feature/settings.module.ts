@@ -27,6 +27,7 @@ import { ManagementControllerServicesEffects } from '../state/management-control
 import { MatTabsModule } from '@angular/material/tabs';
 import { ReportingTasksEffects } from '../state/reporting-tasks/reporting-tasks.effects';
 import { RegistryClientsEffects } from '../state/registry-clients/registry-clients.effects';
+import { ExtensionRegistryClientsEffects } from '../state/extension-registry-clients/extension-registry-clients.effects';
 import { FlowAnalysisRulesEffects } from '../state/flow-analysis-rules/flow-analysis-rules.effects';
 import { Navigation } from '../../../ui/common/navigation/navigation.component';
 import { ParameterProvidersEffects } from '../state/parameter-providers/parameter-providers.effects';
@@ -44,6 +45,7 @@ import { BannerText } from '../../../ui/common/banner-text/banner-text.component
             ManagementControllerServicesEffects,
             ReportingTasksEffects,
             FlowAnalysisRulesEffects,
+            ExtensionRegistryClientsEffects,
             RegistryClientsEffects,
             ParameterProvidersEffects
         ),

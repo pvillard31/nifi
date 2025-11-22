@@ -25,11 +25,12 @@ import org.apache.nifi.controller.ProcessorNode;
 import org.apache.nifi.controller.ReportingTaskNode;
 import org.apache.nifi.controller.flow.VersionedDataflow;
 import org.apache.nifi.controller.flow.VersionedFlowEncodingVersion;
-import org.apache.nifi.flow.VersionedFlowAnalysisRule;
-import org.apache.nifi.flow.VersionedFlowRegistryClient;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.flow.ScheduledState;
 import org.apache.nifi.flow.VersionedControllerService;
+import org.apache.nifi.flow.VersionedExtensionRegistryClient;
+import org.apache.nifi.flow.VersionedFlowAnalysisRule;
+import org.apache.nifi.flow.VersionedFlowRegistryClient;
 import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedParameterProvider;
 import org.apache.nifi.flow.VersionedProcessGroup;
@@ -37,13 +38,13 @@ import org.apache.nifi.flow.VersionedReportingTask;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.parameter.ParameterContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.mapping.ComponentIdLookup;
 import org.apache.nifi.registry.flow.mapping.FlowMappingOptions;
 import org.apache.nifi.registry.flow.mapping.NiFiRegistryFlowMapper;
 import org.apache.nifi.registry.flow.mapping.SensitiveValueEncryptor;
 import org.apache.nifi.registry.flow.mapping.VersionedComponentStateLookup;
-
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -83,7 +84,8 @@ public class VersionedDataflowMapper {
         dataflow.setMaxTimerDrivenThreadCount(flowController.getMaxTimerDrivenThreadCount());
         dataflow.setControllerServices(mapControllerServices());
         dataflow.setParameterContexts(mapParameterContexts());
-        dataflow.setRegistries(mapRegistries());
+        dataflow.setRegistries(mapFlowRegistries());
+        dataflow.setExtensionRegistries(mapExtensionRegistries());
         dataflow.setReportingTasks(mapReportingTasks());
         dataflow.setFlowAnalysisRules(mapFlowAnalysisRules());
         dataflow.setParameterProviders(mapParameterProviders());
@@ -115,12 +117,23 @@ public class VersionedDataflowMapper {
         return parameterContexts;
     }
 
-    private List<VersionedFlowRegistryClient> mapRegistries() {
+    private List<VersionedFlowRegistryClient> mapFlowRegistries() {
         final List<VersionedFlowRegistryClient> registries = new ArrayList<>();
 
         for (final FlowRegistryClientNode clientNode : flowController.getFlowManager().getAllFlowRegistryClients()) {
             final VersionedFlowRegistryClient versionedFlowRegistryClient = flowMapper.mapFlowRegistryClient(clientNode, flowController.getControllerServiceProvider());
             registries.add(versionedFlowRegistryClient);
+        }
+
+        return registries;
+    }
+
+    private List<VersionedExtensionRegistryClient> mapExtensionRegistries() {
+        final List<VersionedExtensionRegistryClient> registries = new ArrayList<>();
+
+        for (final ExtensionRegistryClientNode clientNode : flowController.getFlowManager().getAllExtensionRegistryClients()) {
+            final VersionedExtensionRegistryClient versionedExtensionRegistryClient = flowMapper.mapExtensionRegistryClient(clientNode, flowController.getControllerServiceProvider());
+            registries.add(versionedExtensionRegistryClient);
         }
 
         return registries;

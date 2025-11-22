@@ -17,7 +17,7 @@
 
 package org.apache.nifi.py4j;
 
-import org.apache.nifi.components.AsyncLoadedProcessor;
+import org.apache.nifi.components.AsyncLoadedComponent;
 import org.apache.nifi.py4j.logback.LevelChangeListener;
 import org.apache.nifi.py4j.logging.LogLevelChangeHandler;
 import org.apache.nifi.py4j.logging.StandardLogLevelChangeHandler;
@@ -143,7 +143,7 @@ public class StandardPythonBridge implements PythonBridge {
     }
 
     @Override
-    public AsyncLoadedProcessor createProcessor(final String identifier, final String type, final String version, final boolean preferIsolatedProcess, final boolean initialize) {
+    public AsyncLoadedComponent createProcessor(final String identifier, final String type, final String version, final boolean preferIsolatedProcess, final boolean initialize) {
         final PythonProcessorDetails processorDetails = getProcessorTypes().stream()
             .filter(details -> details.getProcessorType().equals(type))
             .filter(details -> details.getProcessorVersion().equals(version))

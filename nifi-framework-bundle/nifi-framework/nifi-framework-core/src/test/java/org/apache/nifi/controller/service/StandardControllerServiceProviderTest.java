@@ -22,6 +22,7 @@ import org.apache.nifi.components.state.StateManagerProvider;
 import org.apache.nifi.components.validation.ValidationTrigger;
 import org.apache.nifi.controller.ControllerService;
 import org.apache.nifi.controller.ExtensionBuilder;
+import org.apache.nifi.controller.FlowController;
 import org.apache.nifi.controller.NodeTypeProvider;
 import org.apache.nifi.controller.ProcessScheduler;
 import org.apache.nifi.controller.ReloadComponent;
@@ -87,6 +88,7 @@ public class StandardControllerServiceProviderTest {
             .reloadComponent(Mockito.mock(ReloadComponent.class))
             .stateManagerProvider(Mockito.mock(StateManagerProvider.class))
             .extensionManager(extensionManager)
+            .flowController(Mockito.mock(FlowController.class))
             .buildControllerService();
     }
 

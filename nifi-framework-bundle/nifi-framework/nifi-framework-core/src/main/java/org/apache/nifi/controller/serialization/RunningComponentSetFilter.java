@@ -34,6 +34,7 @@ import org.apache.nifi.flow.VersionedRemoteGroupPort;
 import org.apache.nifi.flow.VersionedRemoteProcessGroup;
 import org.apache.nifi.flow.VersionedReportingTask;
 import org.apache.nifi.groups.ProcessGroup;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.RemoteGroupPort;
 
@@ -136,6 +137,11 @@ public class RunningComponentSetFilter implements ComponentSetFilter {
     @Override
     public boolean testFlowRegistryClient(final FlowRegistryClientNode flowRegistryClient) {
        return false;
+    }
+
+    @Override
+    public boolean testExtensionRegistryClient(final ExtensionRegistryClientNode extensionRegistryClient) {
+        return false;
     }
 
     @Override

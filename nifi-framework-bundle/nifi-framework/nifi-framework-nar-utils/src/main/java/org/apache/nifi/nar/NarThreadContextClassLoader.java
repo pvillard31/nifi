@@ -54,6 +54,7 @@ import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.processor.io.StreamCallback;
 import org.apache.nifi.provenance.ProvenanceRepository;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.reporting.ReportingTask;
 import org.apache.nifi.util.NiFiProperties;
@@ -88,6 +89,7 @@ public class NarThreadContextClassLoader extends URLClassLoader {
         narSpecificClasses.add(ContentRepository.class);
         narSpecificClasses.add(StateProvider.class);
         narSpecificClasses.add(FlowRegistryClient.class);
+        narSpecificClasses.add(ExtensionRegistryClient.class);
         narSpecificClasses.add(NarPersistenceProvider.class);
     }
 

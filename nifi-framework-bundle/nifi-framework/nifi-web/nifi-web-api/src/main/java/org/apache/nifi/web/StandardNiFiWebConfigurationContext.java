@@ -16,16 +16,20 @@
  */
 package org.apache.nifi.web;
 
+import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.action.Action;
 import org.apache.nifi.action.Component;
 import org.apache.nifi.action.FlowChangeAction;
 import org.apache.nifi.action.Operation;
-import org.apache.nifi.action.RequestDetails;
-import org.apache.nifi.action.StandardRequestDetails;
 import org.apache.nifi.action.component.details.FlowChangeExtensionDetails;
 import org.apache.nifi.action.details.FlowChangeConfigureDetails;
+import org.apache.nifi.action.RequestDetails;
+import org.apache.nifi.action.StandardRequestDetails;
 import org.apache.nifi.admin.service.AuditService;
 import org.apache.nifi.authorization.AuthorizeControllerServiceReference;
 import org.apache.nifi.authorization.AuthorizeParameterReference;
@@ -48,6 +52,7 @@ import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.api.ApplicationResource.ReplicationTarget;
 import org.apache.nifi.web.api.dto.AllowableValueDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
+import org.apache.nifi.web.api.dto.ExtensionRegistryClientDTO;
 import org.apache.nifi.web.api.dto.FlowRegistryClientDTO;
 import org.apache.nifi.web.api.dto.ParameterProviderDTO;
 import org.apache.nifi.web.api.dto.ProcessorConfigDTO;
@@ -57,6 +62,7 @@ import org.apache.nifi.web.api.dto.ReportingTaskDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
 import org.apache.nifi.web.api.entity.AllowableValueEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
+import org.apache.nifi.web.api.entity.ExtensionRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
@@ -65,11 +71,6 @@ import org.apache.nifi.web.security.NiFiWebAuthenticationDetails;
 import org.apache.nifi.web.util.ClientResponseUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import jakarta.ws.rs.HttpMethod;
-import jakarta.ws.rs.core.MultivaluedHashMap;
-import jakarta.ws.rs.core.MultivaluedMap;
-import jakarta.ws.rs.core.Response;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -133,55 +134,49 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
 
         Component componentType = switch (requestContext.getExtensionType()) {
             case ProcessorConfiguration -> {
-                // authorize access
                 serviceFacade.authorizeAccess(lookup -> {
                     final Authorizable authorizable = lookup.getProcessor(requestContext.getId()).getAuthorizable();
                     authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                 });
-
                 yield Component.Processor;
             }
             case ControllerServiceConfiguration -> {
-                // authorize access
                 serviceFacade.authorizeAccess(lookup -> {
                     final Authorizable authorizable = lookup.getControllerService(requestContext.getId()).getAuthorizable();
                     authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                 });
-
                 yield Component.ControllerService;
             }
             case ReportingTaskConfiguration -> {
-                // authorize access
                 serviceFacade.authorizeAccess(lookup -> {
                     final Authorizable authorizable = lookup.getReportingTask(requestContext.getId()).getAuthorizable();
                     authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                 });
-
                 yield Component.ReportingTask;
             }
             case ParameterProviderConfiguration -> {
-                // authorize access
                 serviceFacade.authorizeAccess(lookup -> {
                     final Authorizable authorizable = lookup.getParameterProvider(requestContext.getId()).getAuthorizable();
                     authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                 });
-
                 yield Component.ParameterProvider;
             }
             case FlowRegistryClientConfiguration -> {
-                // authorize access
                 serviceFacade.authorizeAccess(lookup -> {
                     final Authorizable authorizable = lookup.getFlowRegistryClient(requestContext.getId()).getAuthorizable();
                     authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                 });
                 yield Component.FlowRegistryClient;
             }
-            default -> null;
+            case ExtensionRegistryClientConfiguration -> {
+                serviceFacade.authorizeAccess(lookup -> {
+                    final Authorizable authorizable = lookup.getExtensionRegistryClient(requestContext.getId()).getAuthorizable();
+                    authorizable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
+                });
+                yield Component.FlowRegistryClient;
+            }
+            default -> throw new IllegalArgumentException("Unsupported extension type: " + requestContext.getExtensionType());
         };
-
-        if (componentType == null) {
-            throw new IllegalArgumentException("UI extension type must support Processor, ControllerService, or ReportingTask configuration.");
-        }
 
         // - when running standalone or cluster - actions from custom UIs are stored locally
         // - clustered nodes do not serve custom UIs directly to users so they should never be invoking this method
@@ -239,19 +234,15 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
             throw new IllegalArgumentException("The UI extension type must be specified.");
         }
 
-        // get the component facade for interacting directly with that type of object
-        ComponentFacade componentFacade = switch (requestContext.getExtensionType()) {
+        final ComponentFacade componentFacade = switch (requestContext.getExtensionType()) {
             case ProcessorConfiguration -> new ProcessorFacade();
             case ControllerServiceConfiguration -> new ControllerServiceFacade();
             case ReportingTaskConfiguration -> new ReportingTaskFacade();
             case ParameterProviderConfiguration -> new ParameterProviderFacade();
             case FlowRegistryClientConfiguration -> new FlowRegistryClientFacade();
-            default -> null;
+            case ExtensionRegistryClientConfiguration -> new ExtensionRegistryClientFacade();
+            default -> throw new IllegalArgumentException("Unsupported extension type: " + requestContext.getExtensionType());
         };
-
-        if (componentFacade == null) {
-            throw new IllegalArgumentException("UI extension type must support Processor, ControllerService, or ReportingTask configuration.");
-        }
 
         return componentFacade.getComponentDetails(requestContext);
     }
@@ -271,17 +262,15 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
             throw new IllegalArgumentException("The UI extension type must be specified.");
         }
 
-        // get the component facade for interacting directly with that type of object
-        ComponentFacade componentFacade = switch (requestContext.getExtensionType()) {
+        final ComponentFacade componentFacade = switch (requestContext.getExtensionType()) {
             case ProcessorConfiguration -> new ProcessorFacade();
             case ControllerServiceConfiguration -> new ControllerServiceFacade();
             case ReportingTaskConfiguration -> new ReportingTaskFacade();
-            default -> null;
+            case ParameterProviderConfiguration -> new ParameterProviderFacade();
+            case FlowRegistryClientConfiguration -> new FlowRegistryClientFacade();
+            case ExtensionRegistryClientConfiguration -> new ExtensionRegistryClientFacade();
+            default -> throw new IllegalArgumentException("Unsupported extension type: " + requestContext.getExtensionType());
         };
-
-        if (componentFacade == null) {
-            throw new IllegalArgumentException("UI extension type must support Processor, ControllerService, or ReportingTask configuration.");
-        }
 
         // if we're clustered, ensure this node is not disconnected
         if (StandardNiFiWebConfigurationContext.this.properties.isClustered() && clusterCoordinator != null && !clusterCoordinator.isConnected()) {
@@ -993,7 +982,7 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
 
             // authorize access
             serviceFacade.authorizeAccess(lookup -> {
-                final Authorizable authorizable = lookup.getParameterProvider(id).getAuthorizable();
+                final Authorizable authorizable = lookup.getFlowRegistryClient(id).getAuthorizable();
                 authorizable.authorize(authorizer, RequestAction.READ, NiFiUserUtils.getNiFiUser());
             });
 
@@ -1044,7 +1033,7 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
             // authorize access
             serviceFacade.authorizeAccess(lookup -> {
                 // authorize the flow registry client
-                final ComponentAuthorizable authorizable = lookup.getParameterProvider(id);
+                final ComponentAuthorizable authorizable = lookup.getFlowRegistryClient(id);
                 authorizable.getAuthorizable().authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
 
                 // authorize any referenced service
@@ -1114,15 +1103,159 @@ public class StandardNiFiWebConfigurationContext implements NiFiWebConfiguration
         }
 
         private ComponentDetails getComponentConfiguration(final FlowRegistryClientEntity entity) {
-            final FlowRegistryClientDTO parameterProvider = entity.getComponent();
+            final FlowRegistryClientDTO flowRegistryClientDto = entity.getComponent();
             return new ComponentDetails.Builder()
-                    .id(parameterProvider.getId())
+                    .id(flowRegistryClientDto.getId())
                     .revision(getRevision(entity.getRevision(), entity.getId()))
-                    .name(parameterProvider.getName())
-                    .type(parameterProvider.getType())
-                    .annotationData(parameterProvider.getAnnotationData())
-                    .properties(parameterProvider.getProperties())
-                    .validateErrors(parameterProvider.getValidationErrors()).build();
+                    .name(flowRegistryClientDto.getName())
+                    .type(flowRegistryClientDto.getType())
+                    .annotationData(flowRegistryClientDto.getAnnotationData())
+                    .properties(flowRegistryClientDto.getProperties())
+                    .validateErrors(flowRegistryClientDto.getValidationErrors())
+                    .build();
+        }
+    }
+
+    /**
+     * Interprets the request/response with the underlying ExtensionRegistryClient model.
+     */
+    private class ExtensionRegistryClientFacade implements ComponentFacade {
+
+        @Override
+        public ComponentDetails getComponentDetails(final NiFiWebRequestContext requestContext) {
+            final String id = requestContext.getId();
+
+            // authorize access
+            serviceFacade.authorizeAccess(lookup -> {
+                final Authorizable authorizable = lookup.getExtensionRegistryClient(id).getAuthorizable();
+                authorizable.authorize(authorizer, RequestAction.READ, NiFiUserUtils.getNiFiUser());
+            });
+
+            ExtensionRegistryClientEntity entity;
+            if (properties.isClustered() && clusterCoordinator != null && clusterCoordinator.isConnected()) {
+                // create the request URL
+                URI requestUrl;
+                try {
+                    String path = "/nifi-api/controller/extension-registry-clients/" + URLEncoder.encode(id, StandardCharsets.UTF_8);
+                    requestUrl = new URI(requestContext.getScheme(), null, "localhost", 0, path, null, null);
+                } catch (final URISyntaxException use) {
+                    throw new ClusterRequestException(use);
+                }
+
+                // set the request parameters
+                final MultivaluedMap<String, String> parameters = new MultivaluedHashMap<>();
+
+                // replicate request
+                NodeResponse nodeResponse;
+                try {
+                    nodeResponse = replicate(HttpMethod.GET, requestUrl, parameters, getHeaders(requestContext));
+                } catch (final InterruptedException e) {
+                    throw new IllegalClusterStateException("Request was interrupted while waiting for response from node");
+                }
+
+                // check for issues replicating request
+                checkResponse(nodeResponse, id);
+
+                // return flow registry client
+                entity = (ExtensionRegistryClientEntity) nodeResponse.getUpdatedEntity();
+                if (entity == null) {
+                    entity = nodeResponse.getClientResponse().readEntity(ExtensionRegistryClientEntity.class);
+                }
+            } else {
+                entity = serviceFacade.getExtensionRegistryClient(id);
+            }
+
+            // return the extension registry client info
+            return getComponentConfiguration(entity);
+        }
+
+        @Override
+        public ComponentDetails updateComponent(final NiFiWebConfigurationRequestContext requestContext, final String annotationData, final Map<String, String> properties) {
+            final NiFiUser user = NiFiUserUtils.getNiFiUser();
+            final Revision revision = requestContext.getRevision();
+            final String id = requestContext.getId();
+
+            // authorize access
+            serviceFacade.authorizeAccess(lookup -> {
+                // authorize the extension registry client
+                final ComponentAuthorizable authorizable = lookup.getExtensionRegistryClient(id);
+                authorizable.getAuthorizable().authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
+
+                // authorize any referenced service
+                AuthorizeControllerServiceReference.authorizeControllerServiceReferences(properties, authorizable, authorizer, lookup);
+            });
+
+            ExtensionRegistryClientEntity entity;
+            if (StandardNiFiWebConfigurationContext.this.properties.isClustered() && clusterCoordinator != null && clusterCoordinator.isConnected()) {
+                // create the request URL
+                URI requestUrl;
+                try {
+                    String path = "/nifi-api/controller/extension-registry-clients/" + URLEncoder.encode(id, StandardCharsets.UTF_8);
+                    requestUrl = new URI(requestContext.getScheme(), null, "localhost", 0, path, null, null);
+                } catch (final URISyntaxException use) {
+                    throw new ClusterRequestException(use);
+                }
+
+                // create the revision
+                final RevisionDTO revisionDto = new RevisionDTO();
+                revisionDto.setClientId(revision.getClientId());
+                revisionDto.setVersion(revision.getVersion());
+
+                // create the extension registry client entity
+                final ExtensionRegistryClientEntity extensionRegistryClientEntity = new ExtensionRegistryClientEntity();
+                extensionRegistryClientEntity.setRevision(revisionDto);
+
+                // create the extension registry client dto
+                final ExtensionRegistryClientDTO extensionRegistryClientDTO = new ExtensionRegistryClientDTO();
+                extensionRegistryClientEntity.setComponent(extensionRegistryClientDTO);
+                extensionRegistryClientDTO.setId(id);
+                extensionRegistryClientDTO.setAnnotationData(annotationData);
+                extensionRegistryClientDTO.setProperties(properties);
+
+                // set the content type to json
+                final Map<String, String> headers = getHeaders(requestContext);
+                headers.put("Content-Type", "application/json");
+
+                // replicate request
+                NodeResponse nodeResponse;
+                try {
+                    nodeResponse = replicate(HttpMethod.PUT, requestUrl, extensionRegistryClientEntity, headers);
+                } catch (final InterruptedException e) {
+                    throw new IllegalClusterStateException("Request was interrupted while waiting for response from node");
+                }
+
+                // check for issues replicating request
+                checkResponse(nodeResponse, id);
+
+                // return extension registry client
+                entity = (ExtensionRegistryClientEntity) nodeResponse.getUpdatedEntity();
+                if (entity == null) {
+                    entity = nodeResponse.getClientResponse().readEntity(ExtensionRegistryClientEntity.class);
+                }
+            } else {
+                final ExtensionRegistryClientDTO extensionRegistryClientDTO = new ExtensionRegistryClientDTO();
+                extensionRegistryClientDTO.setId(id);
+                extensionRegistryClientDTO.setAnnotationData(annotationData);
+                extensionRegistryClientDTO.setProperties(properties);
+
+                // obtain write lock
+                serviceFacade.verifyRevision(revision, user);
+                entity = serviceFacade.updateExtensionRegistryClient(revision, extensionRegistryClientDTO);
+            }
+
+            // return the processor info
+            return getComponentConfiguration(entity);
+        }
+
+        private ComponentDetails getComponentConfiguration(final ExtensionRegistryClientEntity entity) {
+            final ExtensionRegistryClientDTO extensionRegistryClient = entity.getComponent();
+            return new ComponentDetails.Builder()
+                    .id(extensionRegistryClient.getId())
+                    .name(extensionRegistryClient.getName())
+                    .type(extensionRegistryClient.getType())
+                    .annotationData(extensionRegistryClient.getAnnotationData())
+                    .properties(extensionRegistryClient.getProperties())
+                    .validateErrors(extensionRegistryClient.getValidationErrors()).build();
         }
     }
 

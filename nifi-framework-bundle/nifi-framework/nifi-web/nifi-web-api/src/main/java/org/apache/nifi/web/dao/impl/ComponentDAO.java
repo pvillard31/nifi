@@ -77,6 +77,9 @@ public abstract class ComponentDAO {
         final List<Bundle> bundles = extensionManager.getBundles(type);
 
         if (bundle != null) {
+            if (bundle.isRemote()) {
+                return;
+            }
             final BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
             if (bundles.stream().filter(b -> b.getBundleDetails().getCoordinate().equals(coordinate)).count() == 0) {
                 throw new IllegalStateException(String.format("%s is not known to this NiFi instance.", coordinate.toString()));

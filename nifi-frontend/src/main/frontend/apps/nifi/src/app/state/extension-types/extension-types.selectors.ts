@@ -51,6 +51,11 @@ export const selectRegistryClientTypes = createSelector(
     (state: ExtensionTypesState) => state.registryClientTypes
 );
 
+export const selectExtensionRegistryClientTypes = createSelector(
+    selectExtensionTypesState,
+    (state: ExtensionTypesState) => state.extensionRegistryClientTypes
+);
+
 export const selectFlowAnalysisRuleTypes = createSelector(
     selectExtensionTypesState,
     (state: ExtensionTypesState) => state.flowAnalysisRuleTypes
@@ -77,6 +82,9 @@ export const selectTypesToIdentifyComponentRestrictions = createSelector(
         }
         if (state.registryClientTypes) {
             types.push(...state.registryClientTypes);
+        }
+        if (state.extensionRegistryClientTypes) {
+            types.push(...state.extensionRegistryClientTypes);
         }
         if (state.parameterProviderTypes) {
             types.push(...state.parameterProviderTypes);

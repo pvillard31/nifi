@@ -26,6 +26,7 @@ import { ReportingTaskDefinition } from '../state/reporting-task-definition';
 import { ParameterProviderDefinition } from '../state/parameter-provider-definition';
 import { FlowAnalysisRuleDefinition } from '../state/flow-analysis-rule-definition';
 import { FlowRegistryClientDefinition } from '../state/flow-registry-client-definition';
+import { ExtensionRegistryClientDefinition } from '../state/extension-registry-client-definition';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentationService {
@@ -54,6 +55,12 @@ export class DocumentationService {
     getFlowRegistryClientDefinition(coordinates: DefinitionCoordinates): Observable<FlowRegistryClientDefinition> {
         return this.httpClient.get<FlowRegistryClientDefinition>(
             `${DocumentationService.API}/flow/flow-registry-client-definition/${coordinates.group}/${coordinates.artifact}/${coordinates.version}/${coordinates.type}`
+        );
+    }
+
+    getExtensionRegistryClientDefinition(coordinates: DefinitionCoordinates): Observable<ExtensionRegistryClientDefinition> {
+        return this.httpClient.get<ExtensionRegistryClientDefinition>(
+            `${DocumentationService.API}/flow/extension-registry-client-definition/${coordinates.group}/${coordinates.artifact}/${coordinates.version}/${coordinates.type}`
         );
     }
 

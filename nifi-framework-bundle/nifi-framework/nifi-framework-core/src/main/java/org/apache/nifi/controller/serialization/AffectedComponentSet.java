@@ -44,6 +44,7 @@ import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.groups.StatelessGroupScheduledState;
 import org.apache.nifi.parameter.ParameterContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.diff.DifferenceType;
 import org.apache.nifi.registry.flow.diff.FlowDifference;
@@ -88,6 +89,7 @@ public class AffectedComponentSet {
     private final Set<FlowAnalysisRuleNode> flowAnalysisRules = new HashSet<>();
     private final Set<ParameterProviderNode> parameterProviders = new HashSet<>();
     private final Set<FlowRegistryClientNode> flowRegistryClients = new HashSet<>();
+    private final Set<ExtensionRegistryClientNode> extensionRegistryClients = new HashSet<>();
     private final Set<ProcessGroup> statelessProcessGroups = new HashSet<>();
 
     public AffectedComponentSet(final FlowController flowController) {
@@ -214,6 +216,8 @@ public class AffectedComponentSet {
                 addParameterProvider((ParameterProviderNode) reference);
             } else if (reference instanceof FlowRegistryClientNode) {
                 addFlowRegistryClient((FlowRegistryClientNode) reference);
+            } else if (reference instanceof ExtensionRegistryClientNode) {
+                addExtensionRegistryClient((ExtensionRegistryClientNode) reference);
             }
         }
     }
@@ -301,6 +305,24 @@ public class AffectedComponentSet {
     public boolean isFlowRegistryClientAffected(final String flowRegistryClientId) {
         for (final FlowRegistryClientNode flowRegistryClientNode : flowRegistryClients) {
             if (flowRegistryClientNode.getIdentifier().equals(flowRegistryClientId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void addExtensionRegistryClient(final ExtensionRegistryClientNode extensionRegistryClient) {
+        if (extensionRegistryClient == null) {
+            return;
+        }
+
+        extensionRegistryClients.add(extensionRegistryClient);
+    }
+
+    public boolean isExtensionRegistryClientAffected(final String extensionRegistryClientId) {
+        for (final ExtensionRegistryClientNode extensionRegistryClientNode : extensionRegistryClients) {
+            if (extensionRegistryClientNode.getIdentifier().equals(extensionRegistryClientId)) {
                 return true;
             }
         }

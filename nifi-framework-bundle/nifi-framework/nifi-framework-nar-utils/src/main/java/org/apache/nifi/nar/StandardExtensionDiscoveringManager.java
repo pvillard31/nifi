@@ -49,6 +49,8 @@ import org.apache.nifi.provenance.ProvenanceRepository;
 import org.apache.nifi.python.PythonBridge;
 import org.apache.nifi.python.PythonBundleCoordinate;
 import org.apache.nifi.python.PythonProcessorDetails;
+import org.apache.nifi.registry.extension.ExtensionRegistryClient;
+import org.apache.nifi.registry.extension.ExtensionRegistryException;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.reporting.ReportingTask;
@@ -64,6 +66,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -98,12 +101,15 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
     private final Map<ClassLoader, Bundle> classLoaderBundleLookup = new HashMap<>();
     private final Map<String, ConfigurableComponent> tempComponentLookup = new HashMap<>();
     private final Map<String, List<PythonProcessorDetails>> pythonProcessorDetails = new HashMap<>();
+    private final Map<BundleCoordinate, Instant> lastBundleInstallRequest = new HashMap<>();
 
     private final Map<String, InstanceClassLoader> instanceClassloaderLookup = new ConcurrentHashMap<>();
     private final ConcurrentMap<BaseClassLoaderKey, SharedInstanceClassLoader> sharedBaseClassloaders = new ConcurrentHashMap<>();
 
     // TODO: Make final and provide via constructor?
     private PythonBridge pythonBridge;
+
+    private ExtensionRegistriesManager extensionRegistriesManager;
 
     public StandardExtensionDiscoveringManager() {
         this(Collections.emptyList());
@@ -129,6 +135,7 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
         definitionMap.put(StatusAnalyticsModel.class, new HashSet<>());
         definitionMap.put(ExternalResourceProvider.class, new HashSet<>());
         definitionMap.put(FlowRegistryClient.class, new HashSet<>());
+        definitionMap.put(ExtensionRegistryClient.class, new HashSet<>());
         definitionMap.put(LeaderElectionManager.class, new HashSet<>());
         definitionMap.put(PythonBridge.class, new HashSet<>());
         definitionMap.put(NarPersistenceProvider.class, new HashSet<>());
@@ -193,6 +200,11 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
     }
 
     @Override
+    public synchronized void setExtensionRegistriesManager(final ExtensionRegistriesManager extensionRegistriesManager) {
+        this.extensionRegistriesManager = extensionRegistriesManager;
+    }
+
+    @Override
     public synchronized void discoverPythonExtensions(final Bundle pythonBundle) {
         discoverPythonExtensions(pythonBundle, true);
     }
@@ -233,7 +245,7 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
         int processorsFound = 0;
         for (final PythonProcessorDetails details : pythonProcessorDetails) {
             final BundleDetails bundleDetails = createBundleDetailsWithOverriddenVersion(pythonBundle.getBundleDetails(), details.getProcessorVersion());
-            final Bundle bundle = new Bundle(bundleDetails, pythonBundle.getClassLoader());
+            final Bundle bundle = new Bundle(bundleDetails, pythonBundle.getClassLoader(), false);
 
             final String className = details.getProcessorType();
             final ExtensionDefinition extensionDefinition = new ExtensionDefinition.Builder()
@@ -483,6 +495,7 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
                 .bundle(bundle)
                 .extensionType(extensionType)
                 .runtime(ExtensionRuntime.JAVA)
+                    .version(bundle.getBundleDetails().getCoordinate().getVersion())
                 .build();
 
             bundleExtensionDefinitions.add(extensionDefinition);
@@ -508,7 +521,8 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
      */
     private static boolean multipleVersionsAllowed(Class<?> type) {
         return Processor.class.isAssignableFrom(type) || ControllerService.class.isAssignableFrom(type) || ReportingTask.class.isAssignableFrom(type)
-                || FlowAnalysisRule.class.isAssignableFrom(type) || ParameterProvider.class.isAssignableFrom(type) || FlowRegistryClient.class.isAssignableFrom(type);
+                || FlowAnalysisRule.class.isAssignableFrom(type) || ParameterProvider.class.isAssignableFrom(type) || FlowRegistryClient.class.isAssignableFrom(type)
+                || ExtensionRegistryClient.class.isAssignableFrom(type);
     }
 
     protected boolean isInstanceClassLoaderRequired(final String classType, final Bundle bundle) {
@@ -724,6 +738,19 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
     }
 
     @Override
+    public boolean isRemoteBundle(BundleCoordinate coordinate) {
+        return this.extensionRegistriesManager.isRemoteBundle(coordinate);
+    }
+
+    @Override
+    public BundleCoordinate resolveRemoteBundle(BundleCoordinate requested) {
+        if (this.extensionRegistriesManager == null) {
+            return null;
+        }
+        return this.extensionRegistriesManager.resolveRemoteBundle(requested);
+    }
+
+    @Override
     public synchronized Set<Bundle> removeBundles(final Collection<BundleCoordinate> bundleCoordinates) {
         final Set<Bundle> removedBundles = new LinkedHashSet<>();
         for (final BundleCoordinate bundleCoordinate : bundleCoordinates) {
@@ -829,8 +856,16 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
         if (definition == null) {
             throw new IllegalArgumentException("Class cannot be null");
         }
-        final Set<ExtensionDefinition> extensions = definitionMap.get(definition);
-        return (extensions == null) ? Collections.emptySet() : new HashSet<>(extensions);
+        final Set<ExtensionDefinition> localExtensions = definitionMap.get(definition);
+        final Set<ExtensionDefinition> remoteExtensions = extensionRegistriesManager.getExtensions(definition);
+
+        if (localExtensions != null) {
+            final Set<ExtensionDefinition> allExtensions = new HashSet<>(localExtensions);
+            allExtensions.addAll(remoteExtensions);
+            return allExtensions;
+        }
+
+        return remoteExtensions;
     }
 
     @Override
@@ -849,7 +884,13 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
             return existing;
         }
 
-        final Bundle bundle = getBundle(bundleCoordinate);
+        Bundle bundle = getBundle(bundleCoordinate);
+
+        if (bundle == null) {
+            // trying to get the remote bundle
+            bundle = this.extensionRegistriesManager.getRemoteBundle(bundleCoordinate);
+        }
+
         if (bundle == null) {
             logger.error("Could not instantiate class of type {} using ClassLoader for bundle {} because the bundle could not be found", classType, bundleCoordinate);
             return null;
@@ -861,6 +902,9 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
             if (PythonBundle.isPythonCoordinate(bundle.getBundleDetails().getCoordinate())) {
                 final String procId = getPythonTempComponentId(classType);
                 tempComponent = pythonBridge.createProcessor(procId, classType, bundleCoordinate.getVersion(), false, false);
+            } else if (bundle.isRemote()) {
+                final String componentId = getAsyncLoadingTempComponentId(classType);
+                tempComponent = extensionRegistriesManager.createAsyncLoadedComponent(componentId);
             } else {
                 final Class<?> componentClass = Class.forName(classType, true, bundleClassLoader);
                 tempComponent = (ConfigurableComponent) componentClass.getDeclaredConstructor().newInstance();
@@ -879,6 +923,10 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
 
             return null;
         }
+    }
+
+    private static String getAsyncLoadingTempComponentId(final String type) {
+        return "async-loading-component-" + type;
     }
 
     private static String getPythonTempComponentId(final String type) {
@@ -998,5 +1046,69 @@ public class StandardExtensionDiscoveringManager implements ExtensionDiscovering
         public int hashCode() {
             return Objects.hash(bundle, classloaderIsolationKey);
         }
+    }
+
+    @Override
+    public List<NarInstallRequestFromRegistry> getNARInstallRequest(BundleCoordinate bundleCoordinate) {
+
+        final Instant now = Instant.now();
+        if (lastBundleInstallRequest.containsKey(bundleCoordinate) && lastBundleInstallRequest.get(bundleCoordinate).isAfter(now.minusSeconds(120))) {
+            logger.debug("Skipping NAR install request for bundle {} because it was requested less than 60 seconds ago", bundleCoordinate);
+            return Collections.emptyList();
+        } else {
+            lastBundleInstallRequest.put(bundleCoordinate, now);
+        }
+
+        // list the chain of NARs that are required to load the specified NAR
+        List<BundleCoordinate> narDeps = this.extensionRegistriesManager.getBundleDependencies(bundleCoordinate);
+        logger.debug("Bundle dependency chain for {}: {}", bundleCoordinate, narDeps);
+        List<BundleCoordinate> toInstall = new ArrayList<>();
+
+        // for each one, check if it's already there
+        for (BundleCoordinate narDep : narDeps) {
+            if (getBundle(narDep) == null) {
+                BundleCoordinate remoteCandidate = isRemoteBundle(narDep) ? narDep
+                    : (extensionRegistriesManager != null ? extensionRegistriesManager.resolveRemoteBundle(narDep) : null);
+
+                if (remoteCandidate != null) {
+                    if (!remoteCandidate.equals(narDep)) {
+                        logger.debug("Dependency {} not available with requested version; will use remotely available {}", narDep, remoteCandidate);
+                    }
+                    toInstall.add(remoteCandidate);
+                    continue;
+                }
+
+                final boolean installedWithDifferentVersion = bundleCoordinateBundleLookup.keySet().stream()
+                    .anyMatch(installed -> installed.getGroup().equals(narDep.getGroup())
+                        && installed.getId().equals(narDep.getId()));
+
+                if (installedWithDifferentVersion) {
+                    logger.info("Dependency {} not present with requested version but compatible local bundle exists; will skip remote install of dependency", narDep);
+                    continue;
+                }
+
+                throw new IllegalStateException("NAR bundle " + narDep + " is not installed and is not available through extension registries");
+            } else {
+                logger.debug("Bundle {} already installed", narDep);
+            }
+        }
+
+        List<NarInstallRequestFromRegistry> requests = new ArrayList<>();
+        // download and install the NARs
+        for (BundleCoordinate narDep : toInstall.reversed()) {
+            try {
+                final NarInstallRequestFromRegistry request = this.extensionRegistriesManager.getNarInstallRequest(narDep);
+                if (request != null) {
+                    requests.add(request);
+                } else {
+                    logger.warn("Could not build install request for dependency {}; continuing with remaining requests.", narDep);
+                }
+            } catch (ExtensionRegistryException | IOException e) {
+                logger.error("Failed to install NARs from extension registries", e);
+            }
+        }
+
+        logger.debug("Prepared {} NAR install request(s) for bundle {}", requests.size(), bundleCoordinate);
+        return requests;
     }
 }

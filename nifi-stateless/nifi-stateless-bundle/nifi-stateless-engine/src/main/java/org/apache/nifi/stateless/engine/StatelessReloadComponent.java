@@ -31,6 +31,7 @@ import org.apache.nifi.controller.ReportingTaskNode;
 import org.apache.nifi.controller.TerminationAwareLogger;
 import org.apache.nifi.controller.exception.ControllerServiceInstantiationException;
 import org.apache.nifi.controller.exception.ProcessorInstantiationException;
+import org.apache.nifi.controller.extension.ExtensionRegistryClientInstantiationException;
 import org.apache.nifi.controller.flowanalysis.FlowAnalysisRuleInstantiationException;
 import org.apache.nifi.controller.flowrepository.FlowRepositoryClientInstantiationException;
 import org.apache.nifi.controller.service.ControllerServiceInvocationHandler;
@@ -38,13 +39,14 @@ import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.StandardConfigurationContext;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.logging.LogRepositoryFactory;
+import org.apache.nifi.logging.StandardLoggingContext;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.nar.NarCloseable;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.SimpleProcessLogger;
-import org.apache.nifi.logging.StandardLoggingContext;
 import org.apache.nifi.processor.StandardProcessContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.reporting.ReportingTask;
@@ -305,5 +307,10 @@ public class StatelessReloadComponent implements ReloadComponent {
     @Override
     public void reload(FlowAnalysisRuleNode existingNode, String newType, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls) throws FlowAnalysisRuleInstantiationException {
         // Flow Analysis is not supported in stateless NiFi
+    }
+
+    @Override
+    public void reload(ExtensionRegistryClientNode existingNode, String newType, BundleCoordinate bundleCoordinate, Set<URL> additionalUrls) throws ExtensionRegistryClientInstantiationException {
+        // Extension Registry clients are not supported in stateless NiFi
     }
 }

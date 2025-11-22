@@ -112,6 +112,19 @@
                                     }
                                 "></ng-container>
                         </mat-expansion-panel>
+                        <mat-expansion-panel [expanded]="extensionRegistryClientsExpanded">
+                            <mat-expansion-panel-header>
+                                <mat-panel-title>Extension Registry Clients</mat-panel-title>
+                            </mat-expansion-panel-header>
+                            <ng-container
+                                *ngTemplateOutlet="
+                                    extensionLinks;
+                                    context: {
+                                        $implicit: filterExtensions((extensionRegistryClientTypes$ | async)!),
+                                        componentType: ComponentType.ExtensionRegistryClient
+                                    }
+                                "></ng-container>
+                        </mat-expansion-panel>
                         <mat-expansion-panel>
                             <mat-expansion-panel-header>
                                 <mat-panel-title>Flow Analysis Rules</mat-panel-title>

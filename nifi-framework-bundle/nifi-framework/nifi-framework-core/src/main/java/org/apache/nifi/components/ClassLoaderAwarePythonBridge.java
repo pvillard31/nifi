@@ -104,7 +104,7 @@ public class ClassLoaderAwarePythonBridge implements PythonBridge {
     }
 
     @Override
-    public AsyncLoadedProcessor createProcessor(final String identifier, final String type, final String version, final boolean preferIsolatedProcess, final boolean initialize) {
+    public AsyncLoadedComponent createProcessor(final String identifier, final String type, final String version, final boolean preferIsolatedProcess, final boolean initialize) {
         try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(classLoader)) {
             return delegate.createProcessor(identifier, type, version, preferIsolatedProcess, initialize);
         }

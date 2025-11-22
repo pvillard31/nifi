@@ -95,4 +95,10 @@ public interface ExtensionDiscoveringManager extends ExtensionManager {
      * @param bundles the bundles to scan for Python extensions
      */
     void discoverPythonExtensions(Bundle pythonBundle, Set<Bundle> bundles);
+
+    /**
+     * Provides the manager to discover extension through extension registry clients
+     * @param extensionRegistriesManager the extension registries manager
+     */
+    void setExtensionRegistriesManager(ExtensionRegistriesManager extensionRegistriesManager);
 }

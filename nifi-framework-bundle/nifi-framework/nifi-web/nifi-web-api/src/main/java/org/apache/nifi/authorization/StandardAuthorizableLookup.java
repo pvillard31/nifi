@@ -48,6 +48,7 @@ import org.apache.nifi.controller.service.ControllerServiceReference;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.parameter.ParameterContext;
+import org.apache.nifi.registry.extension.ExtensionRegistryClientNode;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.remote.PortAuthorizationResult;
 import org.apache.nifi.remote.PublicPort;
@@ -59,6 +60,7 @@ import org.apache.nifi.web.controller.ControllerFacade;
 import org.apache.nifi.web.dao.AccessPolicyDAO;
 import org.apache.nifi.web.dao.ConnectionDAO;
 import org.apache.nifi.web.dao.ControllerServiceDAO;
+import org.apache.nifi.web.dao.ExtensionRegistryDAO;
 import org.apache.nifi.web.dao.FlowAnalysisRuleDAO;
 import org.apache.nifi.web.dao.FlowRegistryDAO;
 import org.apache.nifi.web.dao.FunnelDAO;
@@ -82,8 +84,12 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Component
 public class StandardAuthorizableLookup implements AuthorizableLookup {
+    private static final Logger logger = LoggerFactory.getLogger(StandardAuthorizableLookup.class);
 
     private static final TenantAuthorizable TENANT_AUTHORIZABLE = new TenantAuthorizable();
 
@@ -191,6 +197,7 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
     private FlowAnalysisRuleDAO flowAnalysisRuleDAO;
     private ParameterProviderDAO parameterProviderDAO;
     private FlowRegistryDAO flowRegistryDAO;
+    private ExtensionRegistryDAO extensionRegistryDAO;
     private AccessPolicyDAO accessPolicyDAO;
     private ParameterContextDAO parameterContextDAO;
 
@@ -452,6 +459,12 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
     }
 
     @Override
+    public ComponentAuthorizable getExtensionRegistryClient(final String id) {
+        final ExtensionRegistryClientNode extensionRegistryClientNode = extensionRegistryDAO.getExtensionRegistryClient(id);
+        return new ExtensionRegistryClientComponentAuthorizable(extensionRegistryClientNode, controllerFacade.getExtensionManager());
+    }
+
+    @Override
     public SnippetAuthorizable getSnippet(final String id) {
         final Snippet snippet = snippetDAO.getSnippet(id);
         final ProcessGroup processGroup = processGroupDAO.getProcessGroup(snippet.getParentGroupId());
@@ -569,7 +582,9 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
             case DataTransfer:
             case ProvenanceData:
             case Operation:
+
                 return handleResourceTypeContainingOtherResourceType(resource, resourceType);
+
             case Controller:
                 // Handle Nested Resource Types such as Flow Analysis Rules and Flow Registry Clients
                 final ResourceType nestedResourceType;
@@ -587,6 +602,7 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
                     final String componentId = StringUtils.substringAfter(resource, nestedResourceType.getValue()).substring(1);
                     return getAccessPolicyByResource(nestedResourceType, componentId);
                 }
+
             case RestrictedComponents:
                 final String slashRequiredPermission = StringUtils.substringAfter(resource, resourceType.getValue());
 
@@ -606,6 +622,7 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
                 return getAccessPolicy(resourceType, resource);
         }
     }
+
 
     private Authorizable handleResourceTypeContainingOtherResourceType(final String resource, final ResourceType resourceType) {
         // get the resource type
@@ -636,7 +653,7 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
     }
 
     private Authorizable getAccessPolicyByResource(final ResourceType resourceType, final String componentId) {
-        Authorizable authorizable = switch (resourceType) {
+        final Authorizable authorizable = switch (resourceType) {
             case ControllerService -> getControllerService(componentId).getAuthorizable();
             case Funnel -> getFunnel(componentId);
             case InputPort -> getInputPort(componentId);
@@ -661,88 +678,61 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
     }
 
     private Authorizable getAccessPolicyByResource(final ResourceType resourceType) {
-        Authorizable authorizable = null;
-        switch (resourceType) {
-            case Controller:
-                authorizable = getController();
-                break;
-            case Counters:
-                authorizable = getCounters();
-                break;
-            case Flow:
-                authorizable = new Authorizable() {
-                    @Override
-                    public Authorizable getParentAuthorizable() {
-                        return null;
-                    }
+        return switch (resourceType) {
+            case Controller -> getController();
+            case Counters -> getCounters();
+            case Flow -> new Authorizable() {
+                @Override
+                public Authorizable getParentAuthorizable() {
+                    return null;
+                }
 
-                    @Override
-                    public Resource getResource() {
-                        return ResourceFactory.getFlowResource();
-                    }
-                };
-                break;
-            case Provenance:
-                authorizable = getProvenance();
-                break;
-            case Proxy:
-                authorizable = new Authorizable() {
-                    @Override
-                    public Authorizable getParentAuthorizable() {
-                        return null;
-                    }
+                @Override
+                public Resource getResource() {
+                    return ResourceFactory.getFlowResource();
+                }
+            };
+            case Provenance -> getProvenance();
+            case Proxy -> new Authorizable() {
+                @Override
+                public Authorizable getParentAuthorizable() {
+                    return null;
+                }
 
-                    @Override
-                    public Resource getResource() {
-                        return ResourceFactory.getProxyResource();
-                    }
-                };
-                break;
-            case Policy:
-                authorizable = getPolicies();
-                break;
-            case Resource:
-                authorizable = new Authorizable() {
-                    @Override
-                    public Authorizable getParentAuthorizable() {
-                        return null;
-                    }
+                @Override
+                public Resource getResource() {
+                    return ResourceFactory.getProxyResource();
+                }
+            };
+            case Policy -> getPolicies();
+            case Resource -> new Authorizable() {
+                @Override
+                public Authorizable getParentAuthorizable() {
+                    return null;
+                }
 
-                    @Override
-                    public Resource getResource() {
-                        return ResourceFactory.getResourceResource();
-                    }
-                };
-                break;
-            case SiteToSite:
-                authorizable = new Authorizable() {
-                    @Override
-                    public Authorizable getParentAuthorizable() {
-                        return null;
-                    }
+                @Override
+                public Resource getResource() {
+                    return ResourceFactory.getResourceResource();
+                }
+            };
+            case SiteToSite -> new Authorizable() {
+                @Override
+                public Authorizable getParentAuthorizable() {
+                    return null;
+                }
 
-                    @Override
-                    public Resource getResource() {
-                        return ResourceFactory.getSiteToSiteResource();
-                    }
-                };
-                break;
-            case System:
-                authorizable = getSystem();
-                break;
-            case Tenant:
-                authorizable = getTenant();
-                break;
-            case ParameterContext:
-                authorizable = getParameterContexts();
-                break;
-        }
-
-        if (authorizable == null) {
-            throw new IllegalArgumentException("An unexpected type of resource in this policy " + resourceType.getValue());
-        }
-
-        return authorizable;
+                @Override
+                public Resource getResource() {
+                    return ResourceFactory.getSiteToSiteResource();
+                }
+            };
+            case System -> getSystem();
+            case Tenant -> getTenant();
+            case ParameterContext -> getParameterContexts();
+            case RestrictedComponents -> getRestrictedComponents();
+            default -> throw new IllegalArgumentException("An unexpected type of resource in this policy " + resourceType.getValue());
+        };
     }
 
     /**
@@ -765,9 +755,9 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
             snippet.getProcessors().forEach(processor -> {
                 try {
                     final BundleCoordinate bundle = BundleUtils.getCompatibleBundle(extensionManager, processor.getType(), processor.getBundle());
-                    processors.add(getConfigurableComponent(processor.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion())));
-                } catch (final IllegalStateException ignored) {
-                    // no compatible bundles... no additional auth checks necessary... if created, will be ghosted
+                    processors.add(getConfigurableComponent(processor.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion(), false)));
+                } catch (final IllegalStateException e) {
+                    logger.debug("No compatible bundle found for processor type {}", processor.getType());
                 }
             });
         }
@@ -776,9 +766,9 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
             snippet.getControllerServices().forEach(controllerService -> {
                 try {
                     final BundleCoordinate bundle = BundleUtils.getCompatibleBundle(extensionManager, controllerService.getType(), controllerService.getBundle());
-                    controllerServices.add(getConfigurableComponent(controllerService.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion())));
-                } catch (final IllegalStateException ignored) {
-                    // no compatible bundles... no additional auth checks necessary... if created, will be ghosted
+                    controllerServices.add(getConfigurableComponent(controllerService.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion(), false)));
+                } catch (final IllegalStateException e) {
+                    logger.debug("No compatible bundle found for controller service type {}", controllerService.getType());
                 }
             });
         }
@@ -1236,6 +1226,64 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
         }
     }
 
+    /**
+     * ComponentAuthorizable for a ExtensionRegistryClientNode.
+     */
+    private static class ExtensionRegistryClientComponentAuthorizable implements ComponentAuthorizable {
+        private final ExtensionRegistryClientNode extensionRegistryClientNode;
+        private final ExtensionManager extensionManager;
+
+        public ExtensionRegistryClientComponentAuthorizable(final ExtensionRegistryClientNode extensionRegistryClientNode, final ExtensionManager extensionManager) {
+            this.extensionRegistryClientNode = extensionRegistryClientNode;
+            this.extensionManager = extensionManager;
+        }
+
+        @Override
+        public Authorizable getAuthorizable() {
+            return extensionRegistryClientNode;
+        }
+
+        @Override
+        public boolean isRestricted() {
+            return extensionRegistryClientNode.isRestricted();
+        }
+
+        @Override
+        public Set<Authorizable> getRestrictedAuthorizables() {
+            return RestrictedComponentsAuthorizableFactory.getRestrictedComponentsAuthorizable(extensionRegistryClientNode.getComponentClass());
+        }
+
+        @Override
+        public ParameterContext getParameterContext() {
+            return null;
+        }
+
+        @Override
+        public String getValue(PropertyDescriptor propertyDescriptor) {
+            return extensionRegistryClientNode.getEffectivePropertyValue(propertyDescriptor);
+        }
+
+        @Override
+        public String getRawValue(final PropertyDescriptor propertyDescriptor) {
+            return extensionRegistryClientNode.getRawPropertyValue(propertyDescriptor);
+        }
+
+        @Override
+        public PropertyDescriptor getPropertyDescriptor(String propertyName) {
+            return extensionRegistryClientNode.getComponent().getPropertyDescriptor(propertyName);
+        }
+
+        @Override
+        public List<PropertyDescriptor> getPropertyDescriptors() {
+            return extensionRegistryClientNode.getComponent().getPropertyDescriptors();
+        }
+
+        @Override
+        public void cleanUpResources() {
+            extensionManager.removeInstanceClassLoader(extensionRegistryClientNode.getIdentifier());
+        }
+    }
+
     private static class StandardProcessGroupAuthorizable implements ProcessGroupAuthorizable {
         private final ProcessGroup processGroup;
         private final ExtensionManager extensionManager;
@@ -1432,6 +1480,11 @@ public class StandardAuthorizableLookup implements AuthorizableLookup {
     @Autowired
     public void setFlowRegistryDAO(FlowRegistryDAO flowRegistryDAO) {
         this.flowRegistryDAO = flowRegistryDAO;
+    }
+
+    @Autowired
+    public void setExtensionRegistryDAO(ExtensionRegistryDAO extensionRegistryDAO) {
+        this.extensionRegistryDAO = extensionRegistryDAO;
     }
 
     @Autowired

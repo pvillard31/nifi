@@ -46,7 +46,7 @@ public class FlowSynchronizationUtils {
     static BundleCoordinate createBundleCoordinate(final ExtensionManager extensionManager, final Bundle bundle, final String componentType) {
         BundleCoordinate coordinate;
         try {
-            final BundleDTO bundleDto = new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+            final BundleDTO bundleDto = new BundleDTO(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion(), bundle.isRemote());
             coordinate = BundleUtils.getCompatibleBundle(extensionManager, componentType, bundleDto);
         } catch (final IllegalStateException e) {
             coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
