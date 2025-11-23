@@ -36,6 +36,8 @@ public class NarSummaryDTO {
     private String sourceIdentifier;
     private int extensionCount;
 
+    private String systemApiVersion;
+
     private String state;
     private String failureMessage;
     private boolean installComplete;
@@ -126,6 +128,15 @@ public class NarSummaryDTO {
 
     public void setExtensionCount(final int extensionCount) {
         this.extensionCount = extensionCount;
+    }
+
+    @Schema(description = "The System API version of the NAR")
+    public String getSystemApiVersion() {
+        return systemApiVersion;
+    }
+
+    public void setSystemApiVersion(final String systemApiVersion) {
+        this.systemApiVersion = systemApiVersion;
     }
 
     @Schema(description = "The state of the NAR (i.e. Installed, or not)")

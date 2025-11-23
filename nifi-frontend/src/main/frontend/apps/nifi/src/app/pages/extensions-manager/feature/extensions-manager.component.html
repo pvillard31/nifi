@@ -1,0 +1,136 @@
+<!--
+~  Licensed to the Apache Software Foundation (ASF) under one or more
+~  contributor license agreements.  See the NOTICE file distributed with
+~  this work for additional information regarding copyright ownership.
+~  The ASF licenses this file to You under the Apache License, Version 2.0
+~  (the "License"); you may not use this file except in compliance with
+~  the License.  You may obtain a copy of the License at
+~
+~     http://www.apache.org/licenses/LICENSE-2.0
+~
+~  Unless required by applicable law or agreed to in writing, software
+~  distributed under the License is distributed on an "AS IS" BASIS,
+~  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+~  See the License for the specific language governing permissions and
+~  limitations under the License.
+-->
+
+<banner-text>
+    <div class="flex flex-col h-full">
+        <header class="mb-5 nifi-header">
+            <navigation></navigation>
+        </header>
+        <div class="pb-5 px-5 flex-1 flex flex-col gap-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="primary-color">Extensions Manager</h3>
+                <button mat-stroked-button color="primary" (click)="refresh()">
+                    <i class="fa fa-refresh mr-2"></i>
+                    Refresh
+                </button>
+            </div>
+
+            @if (status$ | async; as status) {
+                @if (status === 'loading' || status === 'pending') {
+                    <ngx-skeleton-loader count="4" class="w-full"></ngx-skeleton-loader>
+                } @else if (status === 'error') {
+                    <div class="error-banner">
+                        <i class="fa fa-exclamation-circle error-color mr-2"></i>
+                        Unable to load extensions. Please try again.
+                    </div>
+                } @else {
+                    <div class="listing-table flex-1 overflow-hidden">
+                        <div class="table-wrapper">
+                            <table
+                                mat-table
+                                [dataSource]="dataSource"
+                                matSort
+                                matSortActive="artifact"
+                                matSortDirection="asc">
+                                <ng-container matColumnDef="artifact">
+                                    <th mat-header-cell *matHeaderCellDef mat-sort-header>Artifact</th>
+                                    <td mat-cell *matCellDef="let item">{{ item.coordinate.artifact }}</td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="group">
+                                    <th mat-header-cell *matHeaderCellDef mat-sort-header>Group</th>
+                                    <td mat-cell *matCellDef="let item">{{ item.coordinate.group }}</td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="version">
+                                    <th mat-header-cell *matHeaderCellDef mat-sort-header>Version</th>
+                                    <td mat-cell *matCellDef="let item">{{ item.coordinate.version }}</td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="apiVersion">
+                                    <th mat-header-cell *matHeaderCellDef mat-sort-header>API Version</th>
+                                    <td mat-cell *matCellDef="let item">
+                                        {{ item.systemApiVersion || '-' }}
+                                    </td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="remote">
+                                    <th mat-header-cell *matHeaderCellDef class="remote-col">Remote</th>
+                                    <td mat-cell *matCellDef="let item" class="remote-col text-center">
+                                        @if (isRemote(item)) {
+                                            <i class="fa fa-check success-color" aria-label="Remote bundle"></i>
+                                        }
+                                    </td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="dependency">
+                                    <th mat-header-cell *matHeaderCellDef class="dependency-col">Dependency</th>
+                                    <td mat-cell *matCellDef="let item" class="dependency-col text-center">
+                                        @if (item.dependencyCoordinate) {
+                                            <i
+                                                class="fa fa-question-circle primary-color"
+                                                matTooltip="{{ formatCoordinate(item.dependencyCoordinate) }}"></i>
+                                        } @else {
+                                            &mdash;
+                                        }
+                                    </td>
+                                </ng-container>
+
+                                <ng-container matColumnDef="actions">
+                                    <th mat-header-cell *matHeaderCellDef></th>
+                                    <td mat-cell *matCellDef="let item" class="actions-col">
+                                        <button
+                                            mat-icon-button
+                                            [matMenuTriggerFor]="bundleActions"
+                                            aria-label="Bundle actions">
+                                            <i class="fa fa-ellipsis-v"></i>
+                                        </button>
+                                        <mat-menu #bundleActions="matMenu" xPosition="before">
+                                            <button
+                                                mat-menu-item
+                                                (click)="downloadBundle(item)"
+                                                [disabled]="!isRemote(item) || isDownloading(item)">
+                                                <i class="fa fa-download mr-2"></i>
+                                                Download Bundle
+                                            </button>
+                                            <button
+                                                mat-menu-item
+                                                (click)="deleteBundle(item)"
+                                                [disabled]="isRemote(item)">
+                                                <i class="fa fa-trash mr-2"></i>
+                                                Delete Downloaded Bundle
+                                            </button>
+                                            <button
+                                                mat-menu-item
+                                                (click)="showDetails(item)">
+                                                <i class="fa fa-list-ul mr-2"></i>
+                                                Show Extension Details
+                                            </button>
+                                        </mat-menu>
+                                    </td>
+                                </ng-container>
+
+                                <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+                                <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</banner-text>

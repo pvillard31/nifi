@@ -69,6 +69,14 @@ const routes: Routes = [
             )
     },
     {
+        path: 'extensions-manager',
+        canMatch: [authenticationGuard],
+        loadChildren: () =>
+            import('./pages/extensions-manager/feature/extensions-manager.module').then(
+                (m) => m.ExtensionsManagerModule
+            )
+    },
+    {
         path: 'counters',
         canMatch: [authenticationGuard],
         loadChildren: () => import('./pages/counters/feature/counters.module').then((m) => m.CountersModule)

@@ -134,6 +134,7 @@ import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.nar.NarClassLoadersHolder;
 import org.apache.nifi.nar.NarManifest;
 import org.apache.nifi.nar.NarNode;
+import org.apache.nifi.nar.NarSource;
 import org.apache.nifi.nar.NarState;
 import org.apache.nifi.nar.PythonBundle;
 import org.apache.nifi.parameter.Parameter;
@@ -287,6 +288,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -5315,6 +5317,22 @@ public final class DtoFactory {
        final NarState narState = narNode.getState();
        dto.setInstallComplete(narState == NarState.INSTALLED || narState == NarState.MISSING_DEPENDENCY || narState == NarState.FAILED);
        return dto;
+    }
+
+    public NarSummaryDTO createRemoteNarSummaryDto(final org.apache.nifi.flow.Bundle bundle, final BundleCoordinate dependencyCoordinate,
+                                                   final int extensionCount) {
+        final NarSummaryDTO dto = new NarSummaryDTO();
+        final BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+
+        dto.setIdentifier(UUID.nameUUIDFromBytes(coordinate.getCoordinate().getBytes(StandardCharsets.UTF_8)).toString());
+        dto.setCoordinate(createNarCoordinateDto(coordinate));
+        dto.setDependencyCoordinate(createNarCoordinateDto(dependencyCoordinate));
+        dto.setExtensionCount(extensionCount);
+        dto.setSystemApiVersion(bundle.getSystemApiVersion());
+        dto.setState("Remote");
+        dto.setInstallComplete(false);
+        dto.setSourceType(NarSource.EXTENSION_REGISTRY_CLIENT.name());
+        return dto;
     }
 
    public NarCoordinateDTO createNarCoordinateDto(final BundleCoordinate bundleCoordinate) {

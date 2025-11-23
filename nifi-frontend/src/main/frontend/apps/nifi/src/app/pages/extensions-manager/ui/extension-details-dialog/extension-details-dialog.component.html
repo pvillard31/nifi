@@ -1,0 +1,69 @@
+<!--
+~  Licensed to the Apache Software Foundation (ASF) under one or more
+~  contributor license agreements.  See the NOTICE file distributed with
+~  this work for additional information regarding copyright ownership.
+~  The ASF licenses this file to You under the Apache License, Version 2.0
+~  (the "License"); you may not use this file except in compliance with
+~  the License.  You may obtain a copy of the License at
+~
+~     http://www.apache.org/licenses/LICENSE-2.0
+~
+~  Unless required by applicable law or agreed to in writing, software
+~  distributed under the License is distributed on an "AS IS" BASIS,
+~  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+~  See the License for the specific language governing permissions and
+~  limitations under the License.
+-->
+
+<h2 mat-dialog-title>Extensions for {{ coordinate.artifact }} {{ coordinate.version }}</h2>
+<mat-dialog-content>
+    @if (status$ | async; as status) {
+        @if (status === 'loading' || status === 'pending') {
+            <div class="flex justify-center my-4">
+                <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
+            </div>
+        } @else if (status === 'error') {
+            <div class="error-banner">
+                <i class="fa fa-exclamation-circle error-color mr-2"></i>
+                Unable to load extension details. Please try again.
+            </div>
+        } @else if (details$ | async; as details) {
+            @if (details.dependentCoordinates && details.dependentCoordinates.length > 0) {
+                <div class="details-meta">
+                    <div class="flex items-center gap-x-2 mb-2">
+                        <div class="font-medium">Dependent bundles:</div>
+                        <div class="flex flex-wrap gap-1">
+                            @for (dependency of details.dependentCoordinates; track formatCoordinate(dependency)) {
+                                <span class="dependency-chip">{{ formatCoordinate(dependency) }}</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (getRows(details).length > 0) {
+                <table mat-table [dataSource]="getRows(details)" class="w-full">
+                    <ng-container matColumnDef="type">
+                        <th mat-header-cell *matHeaderCellDef>Extension Type</th>
+                        <td mat-cell *matCellDef="let extension">{{ extension.type }}</td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="name">
+                        <th mat-header-cell *matHeaderCellDef>Name</th>
+                        <td mat-cell *matCellDef="let extension" [title]="extension.name">
+                            {{ extension.name }}
+                        </td>
+                    </ng-container>
+
+                    <tr mat-header-row *matHeaderRowDef="columns; sticky: true"></tr>
+                    <tr mat-row *matRowDef="let row; columns: columns"></tr>
+                </table>
+            } @else {
+                <div class="neutral-color mt-2">No extensions found for this bundle.</div>
+            }
+        }
+    }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+    <button mat-button mat-dialog-close>Close</button>
+</mat-dialog-actions>

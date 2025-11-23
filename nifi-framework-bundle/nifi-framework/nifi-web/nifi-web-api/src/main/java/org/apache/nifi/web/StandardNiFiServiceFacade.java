@@ -152,6 +152,7 @@ import org.apache.nifi.history.PreviousValue;
 import org.apache.nifi.metrics.jvm.JmxJvmMetrics;
 import org.apache.nifi.nar.ExtensionDefinition;
 import org.apache.nifi.nar.ExtensionManager;
+import org.apache.nifi.nar.ExtensionRegistriesManager;
 import org.apache.nifi.nar.NarInstallRequest;
 import org.apache.nifi.nar.NarManager;
 import org.apache.nifi.nar.NarNode;
@@ -442,6 +443,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -7155,7 +7157,9 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     @Override
     public Set<NarSummaryEntity> getNarSummaries() {
-        return narManager.getNars().stream()
+        final Set<NarSummaryEntity> narSummaries = new LinkedHashSet<>();
+
+        final Set<NarNode> installedNars = narManager.getNars().stream()
                 .sorted((o1, o2) -> {
                     final BundleCoordinate coordinate1 = o1.getManifest().getCoordinate();
                     final BundleCoordinate coordinate2 = o2.getManifest().getCoordinate();
@@ -7164,9 +7168,34 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                             .thenComparing(BundleCoordinate::getVersion)
                             .compare(coordinate1, coordinate2);
                 })
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        narSummaries.addAll(installedNars.stream()
                 .map(dtoFactory::createNarSummaryDto)
                 .map(entityFactory::createNarSummaryEntity)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+                .toList());
+
+        final Set<BundleCoordinate> installedCoordinates = installedNars.stream()
+                .map(narNode -> narNode.getManifest().getCoordinate())
+                .collect(Collectors.toSet());
+
+        final ExtensionRegistriesManager registriesManager = controllerFacade.getExtensionRegistriesManager();
+        if (registriesManager != null) {
+            registriesManager.discoverExtensions();
+            for (org.apache.nifi.flow.Bundle bundle : registriesManager.getRemoteBundles()) {
+                final BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+                if (installedCoordinates.contains(coordinate)) {
+                    continue; // already installed locally
+                }
+
+                final BundleCoordinate dependencyCoordinate = registriesManager.getDependencyCoordinate(bundle);
+                final int extensionCount = registriesManager.getRemoteExtensions(bundle).size();
+                final NarSummaryDTO summaryDto = dtoFactory.createRemoteNarSummaryDto(bundle, dependencyCoordinate, extensionCount);
+                narSummaries.add(entityFactory.createNarSummaryEntity(summaryDto));
+            }
+        }
+
+        return narSummaries;
     }
 
     @Override
@@ -7179,34 +7208,69 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
     @Override
     public NarDetailsEntity getNarDetails(final String identifier) {
-        final NarNode narNode = narManager.getNar(identifier)
-                .orElseThrow(() -> new ResourceNotFoundException("A NAR does not exist with the given identifier"));
+        final Optional<NarNode> narNode = narManager.getNar(identifier);
+        if (narNode.isPresent()) {
+            final BundleCoordinate coordinate = narNode.get().getManifest().getCoordinate();
+            final Set<ExtensionDefinition> extensionDefinitions = new HashSet<>();
+            extensionDefinitions.addAll(controllerFacade.getExtensionManager().getTypes(coordinate));
+            extensionDefinitions.addAll(controllerFacade.getExtensionManager().getPythonExtensions(coordinate));
 
-        final BundleCoordinate coordinate = narNode.getManifest().getCoordinate();
-        final Set<ExtensionDefinition> extensionDefinitions = new HashSet<>();
-        extensionDefinitions.addAll(controllerFacade.getExtensionManager().getTypes(coordinate));
-        extensionDefinitions.addAll(controllerFacade.getExtensionManager().getPythonExtensions(coordinate));
+            final Set<NarCoordinateDTO> dependentCoordinates = new HashSet<>();
+            final Set<Bundle> dependentBundles = controllerFacade.getExtensionManager().getDependentBundles(coordinate);
+            if (dependentBundles != null) {
+                for (final Bundle dependentBundle : dependentBundles) {
+                    final NarCoordinateDTO dependentCoordinate = dtoFactory.createNarCoordinateDto(dependentBundle.getBundleDetails().getCoordinate());
+                    dependentCoordinates.add(dependentCoordinate);
+                }
+            }
 
-        final Set<NarCoordinateDTO> dependentCoordinates = new HashSet<>();
-        final Set<Bundle> dependentBundles = controllerFacade.getExtensionManager().getDependentBundles(coordinate);
-        if (dependentBundles != null) {
-            for (final Bundle dependentBundle : dependentBundles) {
-                final NarCoordinateDTO dependentCoordinate = dtoFactory.createNarCoordinateDto(dependentBundle.getBundleDetails().getCoordinate());
-                dependentCoordinates.add(dependentCoordinate);
+            final NarDetailsEntity componentTypesEntity = new NarDetailsEntity();
+            componentTypesEntity.setNarSummary(dtoFactory.createNarSummaryDto(narNode.get()));
+            componentTypesEntity.setDependentCoordinates(dependentCoordinates);
+            componentTypesEntity.setProcessorTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, Processor.class)));
+            componentTypesEntity.setControllerServiceTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ControllerService.class)));
+            componentTypesEntity.setReportingTaskTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ReportingTask.class)));
+            componentTypesEntity.setParameterProviderTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ParameterProvider.class)));
+            componentTypesEntity.setFlowRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowRegistryClient.class)));
+            componentTypesEntity.setFlowAnalysisRuleTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowAnalysisRule.class)));
+            componentTypesEntity.setExtensionRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ExtensionRegistryClient.class)));
+            return componentTypesEntity;
+        }
+
+        // Fallback to remote bundles discovered via extension registry clients
+        final ExtensionRegistriesManager registriesManager = controllerFacade.getExtensionRegistriesManager();
+        if (registriesManager != null) {
+            registriesManager.discoverExtensions();
+            for (org.apache.nifi.flow.Bundle bundle : registriesManager.getRemoteBundles()) {
+                final BundleCoordinate coordinate = new BundleCoordinate(bundle.getGroup(), bundle.getArtifact(), bundle.getVersion());
+                final String bundleId = UUID.nameUUIDFromBytes(coordinate.getCoordinate().getBytes(StandardCharsets.UTF_8)).toString();
+                if (!bundleId.equals(identifier)) {
+                    continue;
+                }
+
+                final BundleCoordinate dependencyCoordinate = registriesManager.getDependencyCoordinate(bundle);
+                final Set<ExtensionDefinition> extensionDefinitions = registriesManager.getRemoteExtensions(bundle);
+
+                final Set<NarCoordinateDTO> dependentCoordinates = new HashSet<>();
+                if (dependencyCoordinate != null) {
+                    dependentCoordinates.add(dtoFactory.createNarCoordinateDto(dependencyCoordinate));
+                }
+
+                final NarDetailsEntity componentTypesEntity = new NarDetailsEntity();
+                componentTypesEntity.setNarSummary(dtoFactory.createRemoteNarSummaryDto(bundle, dependencyCoordinate, extensionDefinitions.size()));
+                componentTypesEntity.setDependentCoordinates(dependentCoordinates);
+                componentTypesEntity.setProcessorTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, Processor.class)));
+                componentTypesEntity.setControllerServiceTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ControllerService.class)));
+                componentTypesEntity.setReportingTaskTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ReportingTask.class)));
+                componentTypesEntity.setParameterProviderTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ParameterProvider.class)));
+                componentTypesEntity.setFlowRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowRegistryClient.class)));
+                componentTypesEntity.setFlowAnalysisRuleTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowAnalysisRule.class)));
+                componentTypesEntity.setExtensionRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ExtensionRegistryClient.class)));
+                return componentTypesEntity;
             }
         }
 
-        final NarDetailsEntity componentTypesEntity = new NarDetailsEntity();
-        componentTypesEntity.setNarSummary(dtoFactory.createNarSummaryDto(narNode));
-        componentTypesEntity.setDependentCoordinates(dependentCoordinates);
-        componentTypesEntity.setProcessorTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, Processor.class)));
-        componentTypesEntity.setControllerServiceTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ControllerService.class)));
-        componentTypesEntity.setReportingTaskTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ReportingTask.class)));
-        componentTypesEntity.setParameterProviderTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ParameterProvider.class)));
-        componentTypesEntity.setFlowRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowRegistryClient.class)));
-        componentTypesEntity.setFlowAnalysisRuleTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, FlowAnalysisRule.class)));
-        componentTypesEntity.setExtensionRegistryClientTypes(dtoFactory.fromDocumentedTypes(getTypes(extensionDefinitions, ExtensionRegistryClient.class)));
-        return componentTypesEntity;
+        throw new ResourceNotFoundException("A NAR does not exist with the given identifier");
     }
 
     private Set<ExtensionDefinition> getTypes(final Set<ExtensionDefinition> extensionDefinitions, final Class<?> extensionType) {

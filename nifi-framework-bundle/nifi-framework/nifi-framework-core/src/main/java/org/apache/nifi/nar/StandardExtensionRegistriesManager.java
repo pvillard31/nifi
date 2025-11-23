@@ -40,6 +40,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -403,6 +404,21 @@ public class StandardExtensionRegistriesManager implements ExtensionRegistriesMa
         } catch (NumberFormatException nfe) {
             return 0;
         }
+    }
+
+    @Override
+    public Set<Bundle> getRemoteBundles() {
+        return Collections.unmodifiableSet(remoteBundlesExtensions.keySet());
+    }
+
+    @Override
+    public BundleCoordinate getDependencyCoordinate(final Bundle bundle) {
+        return bundleDependencies.get(bundle);
+    }
+
+    @Override
+    public Set<ExtensionDefinition> getRemoteExtensions(final Bundle bundle) {
+        return remoteBundlesExtensions.getOrDefault(bundle, Collections.emptySet());
     }
 
 }

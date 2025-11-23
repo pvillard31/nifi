@@ -90,6 +90,14 @@
                             <i class="fa fa-list-alt primary-color mr-2"></i>
                             Parameter Contexts
                         </button>
+                        <button
+                            mat-menu-item
+                            class="global-menu-item"
+                            [routerLink]="['/extensions-manager']"
+                            [disabled]="!user.controllerPermissions.canRead">
+                            <i class="fa fa-plug primary-color mr-2"></i>
+                            Extensions Manager
+                        </button>
                         @if (clusterSummary()?.clustered) {
                             <button
                                 mat-menu-item

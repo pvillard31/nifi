@@ -37,6 +37,23 @@ public interface ExtensionRegistriesManager {
         discoverExtensions();
     }
 
+    /**
+     * @return the set of bundles discovered across all configured extension registry clients
+     */
+    java.util.Set<org.apache.nifi.flow.Bundle> getRemoteBundles();
+
+    /**
+     * @param bundle the remote bundle
+     * @return the dependency coordinate for the given bundle, or {@code null} when none exists
+     */
+    BundleCoordinate getDependencyCoordinate(org.apache.nifi.flow.Bundle bundle);
+
+    /**
+     * @param bundle the remote bundle
+     * @return the extensions contained in the bundle (empty when not known)
+     */
+    java.util.Set<ExtensionDefinition> getRemoteExtensions(org.apache.nifi.flow.Bundle bundle);
+
     Set<ExtensionDefinition> getExtensions(final Class<?> definition);
 
     boolean isRemoteBundle(final BundleCoordinate coordinate);
