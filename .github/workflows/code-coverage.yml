@@ -216,8 +216,14 @@ jobs:
           JACOCO_VERSION=$(./mvnw help:evaluate -Dexpression=jacoco.version -q -DforceStdout 2>/dev/null)
           ./mvnw dependency:copy -Dartifact=org.jacoco:org.jacoco.cli:${JACOCO_VERSION}:jar:nodeps -DoutputDirectory=target/jacoco-cli
           
-          # Build classpath from all compiled classes in the project
-          CLASS_DIRS=$(find . -path "*/target/classes" -type d | grep -v "test-classes" | tr '\n' ':')
+          # Build --classfiles arguments for JaCoCo CLI
+          # Each directory needs to be passed as a separate --classfiles argument
+          CLASSFILES_ARGS=""
+          while IFS= read -r dir; do
+            CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
+          done < <(find . -path "*/target/classes" -type d | grep -v "test-classes")
+          
+          echo "Found class directories for JaCoCo report generation"
           
           # Convert each .exec file to XML
           for exec_file in target/system-tests-coverage/*.exec; do
@@ -225,8 +231,8 @@ jobs:
               xml_file="${exec_file%.exec}.xml"
               echo "Converting $exec_file to $xml_file"
               java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report "$exec_file" \
-                --classfiles "$CLASS_DIRS" \
-                --xml "$xml_file" 2>/dev/null || echo "Warning: Could not convert $exec_file"
+                $CLASSFILES_ARGS \
+                --xml "$xml_file" || echo "Warning: Could not convert $exec_file"
             fi
           done
           
