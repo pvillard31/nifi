@@ -194,7 +194,7 @@ jobs:
           -ff
           ${{ env.MAVEN_RUN_ARGUMENTS }}
           ${{ env.MAVEN_PROJECTS }}
-      - name: Collect and Merge Coverage Files
+      - name: Collect and Convert Coverage Files
         if: always()
         run: |
           # Collect all jacoco.exec files from instance directories
@@ -211,34 +211,47 @@ jobs:
             exit 0
           fi
           
-          # Download JaCoCo CLI for merging
+          # Download JaCoCo CLI
           JACOCO_VERSION=$(./mvnw help:evaluate -Dexpression=jacoco.version -q -DforceStdout 2>/dev/null)
           ./mvnw dependency:copy -Dartifact=org.jacoco:org.jacoco.cli:${JACOCO_VERSION}:jar:nodeps -DoutputDirectory=target/jacoco-cli
           
           # Merge all exec files into one
-          mkdir -p nifi-code-coverage/target
+          mkdir -p target/system-tests-coverage
           echo "Merging coverage files..."
           java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar merge \
             $EXEC_FILES \
-            --destfile nifi-code-coverage/target/jacoco-system-tests.exec
+            --destfile target/system-tests-coverage/jacoco-merged.exec
           
-          echo "=== Merged coverage file ==="
-          ls -la nifi-code-coverage/target/jacoco-system-tests.exec
-      - name: Generate Coverage Report
-        if: always()
-        run: |
-          # Use Maven's JaCoCo plugin to generate report (more robust than CLI)
-          ./mvnw -nsu -ntp -pl nifi-code-coverage jacoco:report \
-            -Djacoco.dataFile=target/jacoco-system-tests.exec \
-            -Djacoco.outputDirectory=target/site/jacoco-system-tests || echo "Report generation completed with warnings"
+          # Build classfiles arguments
+          # Exclude NAR modules (bundled deps), nifi-mock (problematic class files), nifi-code-coverage (POM only)
+          CLASSFILES_ARGS=""
+          for dir in $(find . -path "*/target/classes" -type d \
+            | grep -v "test-classes" \
+            | grep -v "\-nar/" \
+            | grep -v "nifi-mock" \
+            | grep -v "nifi-code-coverage"); do
+            CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
+          done
           
-          echo "=== Generated report ==="
-          ls -la nifi-code-coverage/target/site/jacoco-system-tests/ 2>/dev/null || echo "No report generated"
+          echo "Generating XML report..."
+          java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report \
+            target/system-tests-coverage/jacoco-merged.exec \
+            $CLASSFILES_ARGS \
+            --xml target/system-tests-coverage/jacoco.xml 2>&1 || true
+          
+          # Check if report was generated
+          if [ -f "target/system-tests-coverage/jacoco.xml" ]; then
+            echo "=== Generated XML report ==="
+            ls -la target/system-tests-coverage/jacoco.xml
+            head -20 target/system-tests-coverage/jacoco.xml
+          else
+            echo "WARNING: No XML report was generated"
+          fi
       # TODO: Revert to github.repository_owner == 'apache' before merging
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v5
         if: github.repository_owner == 'pvillard31'
         with:
-          files: nifi-code-coverage/target/site/jacoco-system-tests/jacoco.xml
+          files: target/system-tests-coverage/jacoco.xml
           flags: system-tests
           token: ${{ secrets.CODECOV_TOKEN }}
