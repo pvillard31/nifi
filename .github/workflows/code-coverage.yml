@@ -222,18 +222,40 @@ jobs:
             $EXEC_FILES \
             --destfile target/system-tests-coverage/jacoco-merged.exec
           
-          # Build classfiles arguments
-          # Exclude NAR modules (bundled deps), nifi-mock (problematic class files), nifi-code-coverage (POM only)
+          # Build classfiles from key framework modules only (avoid duplicates)
+          # Focus on modules that system tests actually exercise
           CLASSFILES_ARGS=""
-          for dir in $(find . -path "*/target/classes" -type d \
-            | grep -v "test-classes" \
-            | grep -v "\-nar/" \
-            | grep -v "nifi-mock" \
-            | grep -v "nifi-code-coverage"); do
-            CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
+          for module in \
+            nifi-framework-core \
+            nifi-framework-components \
+            nifi-framework-cluster \
+            nifi-framework-authorization \
+            nifi-runtime \
+            nifi-bootstrap \
+            nifi-api \
+            nifi-nar-utils \
+            nifi-standard-processors \
+            nifi-expression-language \
+            nifi-flowfile-packager \
+            nifi-parameter \
+            nifi-properties \
+            nifi-record \
+            nifi-record-path \
+            nifi-schema-utils \
+            nifi-security-ssl \
+            nifi-security-utils-api \
+            nifi-site-to-site-client \
+            nifi-utils \
+            nifi-write-ahead-log \
+            nifi-xml-processing; do
+            dir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
+            if [ -n "$dir" ] && [ -d "$dir" ]; then
+              CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
+              echo "Including: $dir"
+            fi
           done
           
-          echo "Generating XML report..."
+          echo "Generating XML report with selected modules..."
           java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report \
             target/system-tests-coverage/jacoco-merged.exec \
             $CLASSFILES_ARGS \
