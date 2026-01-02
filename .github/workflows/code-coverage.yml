@@ -194,54 +194,51 @@ jobs:
           -ff
           ${{ env.MAVEN_RUN_ARGUMENTS }}
           ${{ env.MAVEN_PROJECTS }}
-      - name: Collect and Convert Coverage Files
+      - name: Collect and Merge Coverage Files
         if: always()
         run: |
-          mkdir -p target/system-tests-coverage
-          
           # Collect all jacoco.exec files from instance directories
+          EXEC_FILES=""
           for dir in nifi-system-tests/nifi-system-test-suite/target/*/coverage; do
             if [ -f "$dir/jacoco.exec" ]; then
-              instance_name=$(basename $(dirname "$dir"))
-              cp "$dir/jacoco.exec" "target/system-tests-coverage/jacoco-${instance_name}.exec" 2>/dev/null || true
+              EXEC_FILES="$EXEC_FILES $dir/jacoco.exec"
+              echo "Found: $dir/jacoco.exec"
             fi
           done
           
-          echo "=== Collected .exec files ==="
-          ls -la target/system-tests-coverage/ || echo "No coverage files found"
+          if [ -z "$EXEC_FILES" ]; then
+            echo "No coverage files found"
+            exit 0
+          fi
           
-          # Download JaCoCo CLI to convert .exec to XML (Codecov requires XML format)
+          # Download JaCoCo CLI for merging
           JACOCO_VERSION=$(./mvnw help:evaluate -Dexpression=jacoco.version -q -DforceStdout 2>/dev/null)
           ./mvnw dependency:copy -Dartifact=org.jacoco:org.jacoco.cli:${JACOCO_VERSION}:jar:nodeps -DoutputDirectory=target/jacoco-cli
           
-          # Build --classfiles arguments for JaCoCo CLI
-          # Each directory needs to be passed as a separate --classfiles argument
-          # Exclude NAR modules (-nar suffix) as they contain bundled dependencies that JaCoCo can't analyze
-          CLASSFILES_ARGS=""
-          while IFS= read -r dir; do
-            CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
-          done < <(find . -path "*/target/classes" -type d | grep -v "test-classes" | grep -v "\-nar/")
+          # Merge all exec files into one
+          mkdir -p nifi-code-coverage/target
+          echo "Merging coverage files..."
+          java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar merge \
+            $EXEC_FILES \
+            --destfile nifi-code-coverage/target/jacoco-system-tests.exec
           
-          echo "Found class directories for JaCoCo report generation"
+          echo "=== Merged coverage file ==="
+          ls -la nifi-code-coverage/target/jacoco-system-tests.exec
+      - name: Generate Coverage Report
+        if: always()
+        run: |
+          # Use Maven's JaCoCo plugin to generate report (more robust than CLI)
+          ./mvnw -nsu -ntp -pl nifi-code-coverage jacoco:report \
+            -Djacoco.dataFile=target/jacoco-system-tests.exec \
+            -Djacoco.outputDirectory=target/site/jacoco-system-tests || echo "Report generation completed with warnings"
           
-          # Convert each .exec file to XML
-          for exec_file in target/system-tests-coverage/*.exec; do
-            if [ -f "$exec_file" ]; then
-              xml_file="${exec_file%.exec}.xml"
-              echo "Converting $exec_file to $xml_file"
-              java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report "$exec_file" \
-                $CLASSFILES_ARGS \
-                --xml "$xml_file" || echo "Warning: Could not convert $exec_file"
-            fi
-          done
-          
-          echo "=== Generated XML reports ==="
-          ls -la target/system-tests-coverage/*.xml 2>/dev/null || echo "No XML reports generated"
+          echo "=== Generated report ==="
+          ls -la nifi-code-coverage/target/site/jacoco-system-tests/ 2>/dev/null || echo "No report generated"
       # TODO: Revert to github.repository_owner == 'apache' before merging
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v5
         if: github.repository_owner == 'pvillard31'
         with:
-          directory: target/system-tests-coverage
+          files: nifi-code-coverage/target/site/jacoco-system-tests/jacoco.xml
           flags: system-tests
           token: ${{ secrets.CODECOV_TOKEN }}
