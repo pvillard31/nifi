@@ -218,10 +218,11 @@ jobs:
           
           # Build --classfiles arguments for JaCoCo CLI
           # Each directory needs to be passed as a separate --classfiles argument
+          # Exclude NAR modules (-nar suffix) as they contain bundled dependencies that JaCoCo can't analyze
           CLASSFILES_ARGS=""
           while IFS= read -r dir; do
             CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
-          done < <(find . -path "*/target/classes" -type d | grep -v "test-classes")
+          done < <(find . -path "*/target/classes" -type d | grep -v "test-classes" | grep -v "\-nar/")
           
           echo "Found class directories for JaCoCo report generation"
           
