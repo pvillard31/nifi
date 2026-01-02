@@ -62,9 +62,10 @@ jobs:
           -P report-code-coverage
           jacoco:prepare-agent
           verify
+      # TODO: Revert to github.repository_owner == 'apache' before merging
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v5
-        if: github.repository_owner == 'apache'
+        if: github.repository_owner == 'pvillard31'
         with:
           files: ./nifi-code-coverage/target/site/jacoco-aggregate/jacoco.xml
           flags: unit-tests
@@ -118,9 +119,10 @@ jobs:
           ./mvnw --fail-fast --no-snapshot-updates --no-transfer-progress --show-version
           ${{ env.MAVEN_BUILD_ARGUMENTS }}
           ${{ env.MAVEN_BUILD_EXCLUDE_PROJECTS }}
+      # TODO: Revert to github.repository_owner == 'apache' before merging
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v5
-        if: github.repository_owner == 'apache'
+        if: github.repository_owner == 'pvillard31'
         with:
           directory: .
           flags: integration-tests
@@ -194,22 +196,46 @@ jobs:
           -ff
           ${{ env.MAVEN_RUN_ARGUMENTS }}
           ${{ env.MAVEN_PROJECTS }}
-      - name: Collect Coverage Files
+      - name: Collect and Convert Coverage Files
         if: always()
         run: |
           mkdir -p target/system-tests-coverage
-          find nifi-system-tests -path "*/coverage/jacoco.exec" -exec cp {} target/system-tests-coverage/ \; 2>/dev/null || true
-          # Rename files to include parent directory name for uniqueness
+          
+          # Collect all jacoco.exec files from instance directories
           for dir in nifi-system-tests/nifi-system-test-suite/target/*/coverage; do
             if [ -f "$dir/jacoco.exec" ]; then
               instance_name=$(basename $(dirname "$dir"))
               cp "$dir/jacoco.exec" "target/system-tests-coverage/jacoco-${instance_name}.exec" 2>/dev/null || true
             fi
           done
+          
+          echo "=== Collected .exec files ==="
           ls -la target/system-tests-coverage/ || echo "No coverage files found"
+          
+          # Download JaCoCo CLI to convert .exec to XML (Codecov requires XML format)
+          JACOCO_VERSION=$(./mvnw help:evaluate -Dexpression=jacoco.version -q -DforceStdout 2>/dev/null)
+          ./mvnw dependency:copy -Dartifact=org.jacoco:org.jacoco.cli:${JACOCO_VERSION}:jar:nodeps -DoutputDirectory=target/jacoco-cli
+          
+          # Build classpath from all compiled classes in the project
+          CLASS_DIRS=$(find . -path "*/target/classes" -type d | grep -v "test-classes" | tr '\n' ':')
+          
+          # Convert each .exec file to XML
+          for exec_file in target/system-tests-coverage/*.exec; do
+            if [ -f "$exec_file" ]; then
+              xml_file="${exec_file%.exec}.xml"
+              echo "Converting $exec_file to $xml_file"
+              java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report "$exec_file" \
+                --classfiles "$CLASS_DIRS" \
+                --xml "$xml_file" 2>/dev/null || echo "Warning: Could not convert $exec_file"
+            fi
+          done
+          
+          echo "=== Generated XML reports ==="
+          ls -la target/system-tests-coverage/*.xml 2>/dev/null || echo "No XML reports generated"
+      # TODO: Revert to github.repository_owner == 'apache' before merging
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v5
-        if: github.repository_owner == 'apache'
+        if: github.repository_owner == 'pvillard31'
         with:
           directory: target/system-tests-coverage
           flags: system-tests
