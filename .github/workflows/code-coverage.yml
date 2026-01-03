@@ -229,7 +229,8 @@ jobs:
           SOURCEFILES_ARGS=""
           
           # Extract module names from nifi-code-coverage/pom.xml (nifi-*, minifi-*, c2-* only)
-          MODULES=$(grep '<artifactId>' nifi-code-coverage/pom.xml | sed 's/.*<artifactId>//' | sed 's/<.*//' | grep -E '^(nifi-|minifi-|c2-)' | grep -v 'nifi-code-coverage' | sort -u)
+          # Exclude nifi-mock as it has class files that JaCoCo cannot analyze
+          MODULES=$(grep '<artifactId>' nifi-code-coverage/pom.xml | sed 's/.*<artifactId>//' | sed 's/<.*//' | grep -E '^(nifi-|minifi-|c2-)' | grep -v 'nifi-code-coverage' | grep -v 'nifi-mock' | sort -u)
           
           for module in $MODULES; do
             classdir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
