@@ -223,33 +223,15 @@ jobs:
             $EXEC_FILES \
             --destfile target/system-tests-coverage/jacoco-merged.exec
           
-          # Build classfiles and sourcefiles from key framework modules only (avoid duplicates)
-          # Focus on modules that system tests actually exercise
+          # Build classfiles and sourcefiles from modules defined in nifi-code-coverage pom.xml
+          # This ensures we include all modules that are part of the official coverage scope
           CLASSFILES_ARGS=""
           SOURCEFILES_ARGS=""
-          for module in \
-            nifi-framework-core \
-            nifi-framework-components \
-            nifi-framework-cluster \
-            nifi-framework-authorization \
-            nifi-runtime \
-            nifi-bootstrap \
-            nifi-api \
-            nifi-nar-utils \
-            nifi-standard-processors \
-            nifi-expression-language \
-            nifi-flowfile-packager \
-            nifi-parameter \
-            nifi-properties \
-            nifi-record \
-            nifi-record-path \
-            nifi-schema-utils \
-            nifi-security-ssl \
-            nifi-security-utils-api \
-            nifi-site-to-site-client \
-            nifi-utils \
-            nifi-write-ahead-log \
-            nifi-xml-processing; do
+          
+          # Extract module names from nifi-code-coverage/pom.xml (nifi-*, minifi-*, c2-* only)
+          MODULES=$(grep '<artifactId>' nifi-code-coverage/pom.xml | sed 's/.*<artifactId>//' | sed 's/<.*//' | grep -E '^(nifi-|minifi-|c2-)' | grep -v 'nifi-code-coverage' | sort -u)
+          
+          for module in $MODULES; do
             classdir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
             if [ -n "$classdir" ] && [ -d "$classdir" ]; then
               CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $classdir"
@@ -261,6 +243,8 @@ jobs:
               echo "Including: $classdir"
             fi
           done
+          
+          echo "Total modules found: $(echo $MODULES | wc -w)"
           
           echo "Generating XML report with selected modules..."
           java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report \
