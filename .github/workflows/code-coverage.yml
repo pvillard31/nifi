@@ -58,7 +58,6 @@ jobs:
         run: >
           ./mvnw --fail-fast --no-snapshot-updates --no-transfer-progress --show-version
           --threads 1C
-          -D include-python-integration-tests=true
           -P report-code-coverage
           jacoco:prepare-agent
           verify
@@ -83,7 +82,6 @@ jobs:
         -P integration-tests
         -P nifi-registry-integration-tests
         -P report-code-coverage
-        -D include-python-integration-tests=true
       MAVEN_BUILD_EXCLUDE_PROJECTS: >-
         -pl -:minifi-assembly
         -pl -:nifi-assembly
@@ -137,10 +135,12 @@ jobs:
       MAVEN_BUILD_ARGUMENTS: >-
         install
         -D skipTests
+        -pl nifi-code-coverage
         -am
       MAVEN_RUN_ARGUMENTS: >-
         verify
         -P integration-tests
+        -P report-code-coverage
         -D include-python-integration-tests=true
       MAVEN_PROJECTS: >-
         -pl :nifi-python-framework
@@ -200,7 +200,7 @@ jobs:
       - name: Collect and Convert Coverage Files
         if: always()
         run: |
-          # Collect all jacoco.exec files from instance directories
+          # Collect all jacoco.exec files from spawned NiFi instance directories
           EXEC_FILES=""
           for dir in nifi-system-tests/nifi-system-test-suite/target/*/coverage; do
             if [ -f "$dir/jacoco.exec" ]; then
@@ -208,6 +208,12 @@ jobs:
               echo "Found: $dir/jacoco.exec"
             fi
           done
+          
+          # Also collect jacoco-it.exec from stateless tests (runs in-process, captured by JaCoCo agent)
+          if [ -f "nifi-system-tests/nifi-stateless-system-test-suite/target/jacoco-it.exec" ]; then
+            EXEC_FILES="$EXEC_FILES nifi-system-tests/nifi-stateless-system-test-suite/target/jacoco-it.exec"
+            echo "Found: nifi-system-tests/nifi-stateless-system-test-suite/target/jacoco-it.exec"
+          fi
           
           if [ -z "$EXEC_FILES" ]; then
             echo "No coverage files found"
