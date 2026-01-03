@@ -223,34 +223,37 @@ jobs:
             $EXEC_FILES \
             --destfile target/system-tests-coverage/jacoco-merged.exec
           
-          # Build classfiles and sourcefiles from modules defined in nifi-code-coverage pom.xml
-          # This ensures we include all modules that are part of the official coverage scope
-          CLASSFILES_ARGS=""
-          SOURCEFILES_ARGS=""
+          # Build classfiles by merging all module classes into a single directory
+          # This avoids duplicate class errors that occur when same class exists in multiple modules
+          mkdir -p target/merged-classes
           
           # Extract module names from nifi-code-coverage/pom.xml (nifi-*, minifi-*, c2-* only)
           # Exclude nifi-mock as it has class files that JaCoCo cannot analyze
           MODULES=$(grep '<artifactId>' nifi-code-coverage/pom.xml | sed 's/.*<artifactId>//' | sed 's/<.*//' | grep -E '^(nifi-|minifi-|c2-)' | grep -v 'nifi-code-coverage' | grep -v 'nifi-mock' | sort -u)
           
+          SOURCEFILES_ARGS=""
+          MODULE_COUNT=0
+          
           for module in $MODULES; do
             classdir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
             if [ -n "$classdir" ] && [ -d "$classdir" ]; then
-              CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $classdir"
+              # Copy classes to merged directory (later copies overwrite, deduplicating)
+              cp -r "$classdir"/* target/merged-classes/ 2>/dev/null || true
+              MODULE_COUNT=$((MODULE_COUNT + 1))
               # Also add corresponding source directory
               srcdir=$(echo "$classdir" | sed 's|/target/classes|/src/main/java|')
               if [ -d "$srcdir" ]; then
                 SOURCEFILES_ARGS="$SOURCEFILES_ARGS --sourcefiles $srcdir"
               fi
-              echo "Including: $classdir"
             fi
           done
           
-          echo "Total modules found: $(echo $MODULES | wc -w)"
+          echo "Merged classes from $MODULE_COUNT modules"
           
-          echo "Generating XML report with selected modules..."
+          echo "Generating XML report from merged classes..."
           java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report \
             target/system-tests-coverage/jacoco-merged.exec \
-            $CLASSFILES_ARGS \
+            --classfiles target/merged-classes \
             $SOURCEFILES_ARGS \
             --xml target/system-tests-coverage/jacoco.xml 2>&1 || true
           
