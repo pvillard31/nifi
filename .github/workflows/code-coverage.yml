@@ -221,9 +221,10 @@ jobs:
             $EXEC_FILES \
             --destfile target/system-tests-coverage/jacoco-merged.exec
           
-          # Build classfiles from key framework modules only (avoid duplicates)
+          # Build classfiles and sourcefiles from key framework modules only (avoid duplicates)
           # Focus on modules that system tests actually exercise
           CLASSFILES_ARGS=""
+          SOURCEFILES_ARGS=""
           for module in \
             nifi-framework-core \
             nifi-framework-components \
@@ -247,10 +248,15 @@ jobs:
             nifi-utils \
             nifi-write-ahead-log \
             nifi-xml-processing; do
-            dir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
-            if [ -n "$dir" ] && [ -d "$dir" ]; then
-              CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $dir"
-              echo "Including: $dir"
+            classdir=$(find . -type d -path "*/${module}/target/classes" 2>/dev/null | head -1)
+            if [ -n "$classdir" ] && [ -d "$classdir" ]; then
+              CLASSFILES_ARGS="$CLASSFILES_ARGS --classfiles $classdir"
+              # Also add corresponding source directory
+              srcdir=$(echo "$classdir" | sed 's|/target/classes|/src/main/java|')
+              if [ -d "$srcdir" ]; then
+                SOURCEFILES_ARGS="$SOURCEFILES_ARGS --sourcefiles $srcdir"
+              fi
+              echo "Including: $classdir"
             fi
           done
           
@@ -258,6 +264,7 @@ jobs:
           java -jar target/jacoco-cli/org.jacoco.cli-${JACOCO_VERSION}-nodeps.jar report \
             target/system-tests-coverage/jacoco-merged.exec \
             $CLASSFILES_ARGS \
+            $SOURCEFILES_ARGS \
             --xml target/system-tests-coverage/jacoco.xml 2>&1 || true
           
           # Check if report was generated
