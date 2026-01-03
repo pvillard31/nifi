@@ -70,6 +70,7 @@ jobs:
           files: ./nifi-code-coverage/target/site/jacoco-aggregate/jacoco.xml
           flags: unit-tests
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
 
   integration-tests:
     timeout-minutes: 120
@@ -124,6 +125,7 @@ jobs:
           files: ./nifi-code-coverage/target/site/jacoco-aggregate/jacoco.xml
           flags: integration-tests
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
 
   system-tests:
     timeout-minutes: 120
@@ -283,3 +285,4 @@ jobs:
           files: target/system-tests-coverage/jacoco.xml
           flags: system-tests
           token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
