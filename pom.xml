@@ -206,6 +206,7 @@
         <pmd.version>7.19.0</pmd.version>
         <checkstyle.version>12.3.0</checkstyle.version>
         <testcontainers.version>2.0.3</testcontainers.version>
+        <jacoco.version>0.8.14</jacoco.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -821,7 +822,7 @@
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.14</version>
+                    <version>${jacoco.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>io.swagger.core.v3</groupId>
@@ -1146,6 +1147,31 @@
                         <configuration>
                             <skipTests>true</skipTests>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <!--
+            Enables JaCoCo coverage collection for integration tests.
+            This profile is inherited by all modules and sets up the JaCoCo agent
+            for Failsafe integration tests, writing to jacoco-it.exec files.
+            The nifi-code-coverage module also defines this profile for report aggregation.
+            -->
+            <id>report-code-coverage</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>prepare-agent-integration</id>
+                                <goals>
+                                    <goal>prepare-agent-integration</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
