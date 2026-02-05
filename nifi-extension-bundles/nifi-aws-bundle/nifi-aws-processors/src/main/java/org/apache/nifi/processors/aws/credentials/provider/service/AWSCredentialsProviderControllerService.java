@@ -41,6 +41,7 @@ import org.apache.nifi.processors.aws.credentials.provider.factory.CredentialsSt
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.AccessKeyPairCredentialsStrategy;
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.AnonymousCredentialsStrategy;
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.AssumeRoleCredentialsStrategy;
+import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.EksWebIdentityCredentialsStrategy;
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.ExplicitDefaultCredentialsStrategy;
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.FileCredentialsStrategy;
 import org.apache.nifi.processors.aws.credentials.provider.factory.strategies.ImplicitDefaultCredentialsStrategy;
@@ -226,6 +227,52 @@ public class AWSCredentialsProviderControllerService extends AbstractControllerS
         .dependsOn(ASSUME_ROLE_ARN)
         .build();
 
+    public static final PropertyDescriptor USE_WEB_IDENTITY_TOKEN_FILE = new PropertyDescriptor.Builder()
+        .name("Use Web Identity Token File")
+        .expressionLanguageSupported(ExpressionLanguageScope.NONE)
+        .required(false)
+        .addValidator(StandardValidators.BOOLEAN_VALIDATOR)
+        .sensitive(false)
+        .allowableValues("true", "false")
+        .defaultValue("false")
+        .description("""
+                If true, uses Web Identity credentials from a token file. This is designed for EKS (Elastic Kubernetes Service)
+                environments where the token is provided via a mounted file.
+                By default, the token file path is read from the AWS_WEB_IDENTITY_TOKEN_FILE environment variable,
+                and the role ARN is read from the AWS_ROLE_ARN environment variable.
+                These can be overridden using the Web Identity properties below.
+                This strategy manages its own STS client to avoid connection pool lifecycle issues with the default AWS SDK credentials chain.""")
+        .build();
+
+    public static final PropertyDescriptor WEB_IDENTITY_TOKEN_FILE = new PropertyDescriptor.Builder()
+        .name("Web Identity Token File")
+        .expressionLanguageSupported(ExpressionLanguageScope.NONE)
+        .required(false)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .sensitive(false)
+        .description("Path to the web identity token file. If not specified, the AWS_WEB_IDENTITY_TOKEN_FILE environment variable is used.")
+        .dependsOn(USE_WEB_IDENTITY_TOKEN_FILE, "true")
+        .build();
+
+    public static final PropertyDescriptor WEB_IDENTITY_ROLE_ARN = new PropertyDescriptor.Builder()
+        .name("Web Identity Role ARN")
+        .expressionLanguageSupported(ExpressionLanguageScope.NONE)
+        .required(false)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .sensitive(false)
+        .description("The ARN of the IAM role to assume using web identity. If not specified, the AWS_ROLE_ARN environment variable is used.")
+        .dependsOn(USE_WEB_IDENTITY_TOKEN_FILE, "true")
+        .build();
+
+    public static final PropertyDescriptor WEB_IDENTITY_ROLE_SESSION_NAME = new PropertyDescriptor.Builder()
+        .name("Web Identity Role Session Name")
+        .expressionLanguageSupported(ExpressionLanguageScope.NONE)
+        .required(false)
+        .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+        .sensitive(false)
+        .description("The session name for the assumed role. If not specified, the AWS_ROLE_SESSION_NAME environment variable is used, or defaults to 'nifi-eks-session'.")
+        .dependsOn(USE_WEB_IDENTITY_TOKEN_FILE, "true")
+        .build();
 
     private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
         USE_DEFAULT_CREDENTIALS,
@@ -234,6 +281,10 @@ public class AWSCredentialsProviderControllerService extends AbstractControllerS
         CREDENTIALS_FILE,
         PROFILE_NAME,
         USE_ANONYMOUS_CREDENTIALS,
+        USE_WEB_IDENTITY_TOKEN_FILE,
+        WEB_IDENTITY_TOKEN_FILE,
+        WEB_IDENTITY_ROLE_ARN,
+        WEB_IDENTITY_ROLE_SESSION_NAME,
         ASSUME_ROLE_ARN,
         ASSUME_ROLE_NAME,
         MAX_SESSION_TIME,
@@ -250,6 +301,7 @@ public class AWSCredentialsProviderControllerService extends AbstractControllerS
     private final List<CredentialsStrategy> strategies = List.of(
         // Primary Credential Strategies
         new WebIdentityCredentialsStrategy(),
+        new EksWebIdentityCredentialsStrategy(),
         new ExplicitDefaultCredentialsStrategy(),
         new AccessKeyPairCredentialsStrategy(),
         new FileCredentialsStrategy(),
