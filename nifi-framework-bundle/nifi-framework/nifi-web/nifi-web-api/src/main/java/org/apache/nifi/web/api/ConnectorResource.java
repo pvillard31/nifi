@@ -39,8 +39,11 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
+import jakarta.ws.rs.core.UriBuilder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.asset.Asset;
 import org.apache.nifi.authorization.Authorizer;
@@ -59,6 +62,8 @@ import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.cluster.protocol.NodeIdentifier;
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.processor.DataUnit;
+import org.apache.nifi.registry.flow.FlowSnapshotContainer;
+import org.apache.nifi.registry.flow.RegisteredFlowSnapshot;
 import org.apache.nifi.stream.io.MaxLengthInputStream;
 import org.apache.nifi.ui.extension.UiExtension;
 import org.apache.nifi.ui.extension.UiExtensionMapping;
@@ -80,6 +85,8 @@ import org.apache.nifi.web.api.dto.ConfigVerificationResultDTO;
 import org.apache.nifi.web.api.dto.ConfigurationStepConfigurationDTO;
 import org.apache.nifi.web.api.dto.ConnectorDTO;
 import org.apache.nifi.web.api.dto.DropRequestDTO;
+import org.apache.nifi.web.api.dto.PositionDTO;
+import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.VerifyConnectorConfigStepRequestDTO;
 import org.apache.nifi.web.api.dto.search.SearchResultsDTO;
 import org.apache.nifi.web.api.entity.AssetEntity;
@@ -88,11 +95,13 @@ import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepNamesEntity;
 import org.apache.nifi.web.api.entity.ConnectorEntity;
+import org.apache.nifi.web.api.entity.ConnectorExportToCanvasRequestEntity;
 import org.apache.nifi.web.api.entity.ConnectorPropertyAllowableValuesEntity;
 import org.apache.nifi.web.api.entity.ConnectorRunStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
+import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.SearchResultsEntity;
@@ -101,6 +110,7 @@ import org.apache.nifi.web.api.entity.VerifyConnectorConfigStepRequestEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
 import org.apache.nifi.web.api.request.LongParameter;
 import org.apache.nifi.web.client.api.HttpResponseStatus;
+import org.apache.nifi.web.util.ReplicatedFlowSnapshotResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -2407,6 +2417,212 @@ public class ConnectorResource extends ApplicationResource {
                     return generateOkResponse(entity).build();
                 }
         );
+    }
+
+    /**
+     * Retrieves the connector's managed flow as a versioned flow snapshot for download.
+     *
+     * <p>When {@code includeComponentState} is {@code true} and this request is received by the cluster coordinator,
+     * the coordinator replicates the request to every node and merges each node's LOCAL component state into a single
+     * snapshot before returning. This endpoint is also used internally by {@link #exportConnectorToCanvas} to build
+     * the merged snapshot prior to replicating the import.
+     *
+     * @param connectorId The connector id
+     * @param includeComponentState Whether to include LOCAL and CLUSTER state for stateful components
+     * @param parameterContextName Optional name to assign to the Parameter Context materialized from the connector's implicit context
+     * @return the built {@link RegisteredFlowSnapshot}
+     */
+    @GET
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/{id}/download")
+    @Operation(
+            summary = "Gets a connector's flow for download",
+            description = "Returns a RegisteredFlowSnapshot for the connector's currently running flow, optionally "
+                    + "including component state. In a cluster, requesting component state causes the coordinator "
+                    + "to replicate and merge LOCAL state contributed by each node.",
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = RegisteredFlowSnapshot.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /connectors/{uuid}"),
+                    @SecurityRequirement(name = "Write - /connectors/{uuid}", scopes = "when includeComponentState=true")
+            }
+    )
+    public Response exportConnector(
+            @Parameter(description = "The connector id.", required = true) @PathParam("id") final String connectorId,
+            @QueryParam("includeComponentState") @DefaultValue("false") final boolean includeComponentState,
+            @QueryParam("parameterContextName") final String parameterContextName) {
+
+        final RequestAction requiredAction = includeComponentState ? RequestAction.WRITE : RequestAction.READ;
+        serviceFacade.authorizeAccess(lookup -> {
+            final Authorizable connector = lookup.getConnector(connectorId);
+            connector.authorize(authorizer, requiredAction, NiFiUserUtils.getNiFiUser());
+        });
+
+        final RegisteredFlowSnapshot snapshot;
+        if (includeComponentState && isReplicateRequest()) {
+            final ReplicatedFlowSnapshotResult result = replicateAndMergeFlowExport();
+            if (result.isPassthrough()) {
+                return result.passthroughResponse();
+            }
+            snapshot = result.snapshot();
+        } else if (isReplicateRequest()) {
+            return replicate(HttpMethod.GET);
+        } else {
+            snapshot = serviceFacade.getConnectorExportSnapshot(connectorId, includeComponentState, parameterContextName);
+        }
+
+        final String flowName = snapshot.getFlowContents() != null && snapshot.getFlowContents().getName() != null
+                ? snapshot.getFlowContents().getName() : "connector-flow";
+        final String filename = flowName.replaceAll("\\s", "_") + ".json";
+        return generateOkResponse(snapshot)
+                .header(HttpHeaders.CONTENT_DISPOSITION, String.format("attachment; filename=\"%s\"", filename))
+                .build();
+    }
+
+    /**
+     * Exports the connector's running flow as a new Process Group under the given parent on the canvas.
+     * Optionally carries over stateful component state. Creates a new Parameter Context from the connector's
+     * implicit Parameter Context and copies any referenced assets into the global asset manager.
+     *
+     * @param connectorId The connector id
+     * @param includeComponentState Whether to include LOCAL and CLUSTER state for stateful components
+     * @param request The export request
+     * @return The newly created {@link ProcessGroupEntity}
+     */
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/{id}/export-to-canvas")
+    @Operation(
+            summary = "Exports the connector's flow to the canvas as a new Process Group",
+            responses = {
+                    @ApiResponse(responseCode = "201", content = @Content(schema = @Schema(implementation = ProcessGroupEntity.class))),
+                    @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
+                    @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
+                    @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+                    @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
+                    @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /connectors/{uuid}"),
+                    @SecurityRequirement(name = "Write - /process-groups/{targetParentProcessGroupId}"),
+                    @SecurityRequirement(name = "Write - /connectors/{uuid}", scopes = "when includeComponentState=true")
+            }
+    )
+    public Response exportConnectorToCanvas(
+            @Parameter(description = "The connector id.", required = true) @PathParam("id") final String connectorId,
+            @QueryParam("includeComponentState") @DefaultValue("false") final boolean includeComponentState,
+            @Parameter(description = "The export request details", required = true) final ConnectorExportToCanvasRequestEntity request) {
+
+        if (request == null) {
+            throw new IllegalArgumentException("Export request body is required");
+        }
+        if (request.getTargetParentProcessGroupId() == null || request.getTargetParentProcessGroupId().isBlank()) {
+            throw new IllegalArgumentException("Target parent Process Group id is required");
+        }
+
+        final String targetParentGroupId = request.getTargetParentProcessGroupId();
+        final RequestAction connectorAction = includeComponentState ? RequestAction.WRITE : RequestAction.READ;
+
+        serviceFacade.authorizeAccess(lookup -> {
+            final NiFiUser user = NiFiUserUtils.getNiFiUser();
+            final Authorizable connector = lookup.getConnector(connectorId);
+            connector.authorize(authorizer, connectorAction, user);
+
+            final Authorizable targetParent = lookup.getProcessGroup(targetParentGroupId).getAuthorizable();
+            targetParent.authorize(authorizer, RequestAction.WRITE, user);
+        });
+
+        // Coordinator path: ensure we have a merged snapshot in the body before replicating the import POST to all nodes.
+        if (isReplicateRequest()) {
+            if (request.getFlowSnapshot() == null) {
+                final RegisteredFlowSnapshot snapshot;
+                if (includeComponentState) {
+                    final URI snapshotUri = UriBuilder.fromUri(getAbsolutePath())
+                            .replacePath(null)
+                            .path("nifi-api")
+                            .path("connectors")
+                            .path(connectorId)
+                            .path("download")
+                            .build();
+                    final MultivaluedMap<String, String> snapshotParams = new MultivaluedHashMap<>();
+                    snapshotParams.add("includeComponentState", Boolean.toString(includeComponentState));
+                    if (request.getParameterContextName() != null) {
+                        snapshotParams.add("parameterContextName", request.getParameterContextName());
+                    }
+                    final ReplicatedFlowSnapshotResult snapshotResult = replicateAndMergeFlowExport(snapshotUri, snapshotParams);
+                    if (snapshotResult.isPassthrough()) {
+                        return snapshotResult.passthroughResponse();
+                    }
+                    snapshot = snapshotResult.snapshot();
+                } else {
+                    snapshot = serviceFacade.getConnectorExportSnapshot(connectorId, false, request.getParameterContextName());
+                }
+                request.setFlowSnapshot(snapshot);
+            }
+
+            return replicate(HttpMethod.POST, request);
+        } else if (isDisconnectedFromCluster()) {
+            verifyDisconnectedNodeModification(request.getDisconnectedNodeAcknowledged());
+        }
+
+        // Local-node path: each node receives either:
+        //   - The replicated coordinator POST with the merged snapshot in the body, or
+        //   - A standalone request (no cluster) with no snapshot yet.
+        RegisteredFlowSnapshot flowSnapshot = request.getFlowSnapshot();
+        if (flowSnapshot == null) {
+            flowSnapshot = serviceFacade.getConnectorExportSnapshot(connectorId, includeComponentState, request.getParameterContextName());
+            request.setFlowSnapshot(flowSnapshot);
+        }
+
+        serviceFacade.verifyCanExportConnectorToCanvas(connectorId, targetParentGroupId, includeComponentState);
+
+        // Resolve bundles and external references identically to the PG import path
+        serviceFacade.discoverCompatibleBundles(flowSnapshot.getFlowContents());
+        if (flowSnapshot.getParameterProviders() != null) {
+            serviceFacade.discoverCompatibleBundles(flowSnapshot.getParameterProviders());
+        }
+
+        final NiFiUser user = NiFiUserUtils.getNiFiUser();
+        final FlowSnapshotContainer flowSnapshotContainer = new FlowSnapshotContainer(flowSnapshot);
+        serviceFacade.resolveInheritedControllerServices(flowSnapshotContainer, targetParentGroupId, user);
+        serviceFacade.resolveParameterProviders(flowSnapshot, user);
+
+        final String resolvedName = request.getProcessGroupName() != null && !request.getProcessGroupName().isBlank()
+                ? request.getProcessGroupName().trim()
+                : (flowSnapshot.getFlowContents() != null && flowSnapshot.getFlowContents().getName() != null
+                    ? flowSnapshot.getFlowContents().getName()
+                    : "Exported Connector");
+        final PositionDTO position = request.getPosition() != null ? request.getPosition() : new PositionDTO(0d, 0d);
+
+        final ProcessGroupDTO processGroupDTO = new ProcessGroupDTO();
+        processGroupDTO.setParentGroupId(targetParentGroupId);
+        processGroupDTO.setName(resolvedName);
+        processGroupDTO.setPosition(position);
+        processGroupDTO.setId(generateUuid());
+
+        final String clientId = request.getClientId() != null ? request.getClientId() : "";
+        final Revision revision = new Revision(0L, clientId, processGroupDTO.getId());
+        ProcessGroupEntity entity = serviceFacade.createProcessGroup(revision, targetParentGroupId, processGroupDTO);
+
+        final String newGroupId = entity.getComponent().getId();
+        final Revision newRevision = new Revision(entity.getRevision().getVersion(), entity.getRevision().getClientId(), newGroupId);
+
+        // Do not overwrite the user-specified position or name with the source managed group's values
+        flowSnapshot.getFlowContents().setPosition(null);
+        flowSnapshot.getFlowContents().setName(resolvedName);
+        entity = serviceFacade.updateProcessGroupContents(newRevision, newGroupId, null, flowSnapshot,
+                getIdGenerationSeed().orElse(null), false, false, true);
+
+        entity.setUri(generateResourceUri("process-groups", entity.getId()));
+        return generateCreatedResponse(URI.create(entity.getUri()), entity).build();
     }
 
     // -----------------

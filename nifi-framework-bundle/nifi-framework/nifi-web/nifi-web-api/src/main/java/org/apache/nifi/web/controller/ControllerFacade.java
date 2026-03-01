@@ -20,6 +20,7 @@ import jakarta.ws.rs.WebApplicationException;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.asset.AssetManager;
 import org.apache.nifi.authorization.AccessDeniedException;
 import org.apache.nifi.authorization.AuthorizationResult;
 import org.apache.nifi.authorization.AuthorizationResult.Result;
@@ -225,6 +226,10 @@ public class ControllerFacade implements Authorizable {
 
     public FlowManager getFlowManager() {
         return flowController.getFlowManager();
+    }
+
+    public AssetManager getConnectorAssetManager() {
+        return flowController.getConnectorAssetManager();
     }
 
     /**

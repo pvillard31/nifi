@@ -26,21 +26,27 @@ import org.apache.nifi.authorization.AccessDeniedException;
 import org.apache.nifi.authorization.AuthorizeAccess;
 import org.apache.nifi.authorization.Authorizer;
 import org.apache.nifi.controller.ScheduledState;
+import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.registry.flow.RegisteredFlowSnapshot;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.NiFiServiceFacade;
 import org.apache.nifi.web.Revision;
 import org.apache.nifi.web.api.dto.AllowableValueDTO;
 import org.apache.nifi.web.api.dto.ComponentStateDTO;
 import org.apache.nifi.web.api.dto.ConnectorDTO;
+import org.apache.nifi.web.api.dto.PositionDTO;
+import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
 import org.apache.nifi.web.api.dto.flow.ProcessGroupFlowDTO;
 import org.apache.nifi.web.api.entity.AllowableValueEntity;
 import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ConnectorEntity;
+import org.apache.nifi.web.api.entity.ConnectorExportToCanvasRequestEntity;
 import org.apache.nifi.web.api.entity.ConnectorPropertyAllowableValuesEntity;
 import org.apache.nifi.web.api.entity.ConnectorRunStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
+import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
 import org.apache.nifi.web.api.entity.SecretsEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
@@ -61,6 +67,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -814,5 +821,156 @@ public class TestConnectorResource {
         verify(serviceFacade).authorizeAccess(any(AuthorizeAccess.class));
         verify(serviceFacade, never()).verifyCanClearConnectorControllerServiceState(anyString(), anyString());
         verify(serviceFacade, never()).clearConnectorControllerServiceState(anyString(), anyString(), any());
+    }
+
+    @Test
+    public void testExportConnectorReadOnlyWhenStateNotRequested() {
+        final RegisteredFlowSnapshot snapshot = createSnapshot();
+        when(serviceFacade.getConnectorExportSnapshot(CONNECTOR_ID, false, null)).thenReturn(snapshot);
+
+        try (Response response = connectorResource.exportConnector(CONNECTOR_ID, false, null)) {
+            assertEquals(200, response.getStatus());
+            assertEquals(snapshot, response.getEntity());
+        }
+
+        verify(serviceFacade).authorizeAccess(any(AuthorizeAccess.class));
+        verify(serviceFacade).getConnectorExportSnapshot(CONNECTOR_ID, false, null);
+    }
+
+    @Test
+    public void testExportConnectorWithStatePassesParameterContextName() {
+        final String parameterContextName = "From connector Test";
+        final RegisteredFlowSnapshot snapshot = createSnapshot();
+        when(serviceFacade.getConnectorExportSnapshot(CONNECTOR_ID, true, parameterContextName)).thenReturn(snapshot);
+
+        try (Response response = connectorResource.exportConnector(CONNECTOR_ID, true, parameterContextName)) {
+            assertEquals(200, response.getStatus());
+            assertEquals(snapshot, response.getEntity());
+        }
+
+        verify(serviceFacade).authorizeAccess(any(AuthorizeAccess.class));
+        verify(serviceFacade).getConnectorExportSnapshot(CONNECTOR_ID, true, parameterContextName);
+    }
+
+    @Test
+    public void testExportConnectorNotAuthorized() {
+        doThrow(AccessDeniedException.class).when(serviceFacade).authorizeAccess(any(AuthorizeAccess.class));
+
+        assertThrows(AccessDeniedException.class, () ->
+            connectorResource.exportConnector(CONNECTOR_ID, false, null));
+
+        verify(serviceFacade, never()).getConnectorExportSnapshot(anyString(), anyBoolean(), any());
+    }
+
+    @Test
+    public void testExportConnectorToCanvasWithNullRequest() {
+        assertThrows(IllegalArgumentException.class, () ->
+            connectorResource.exportConnectorToCanvas(CONNECTOR_ID, false, null));
+
+        verify(serviceFacade, never()).authorizeAccess(any(AuthorizeAccess.class));
+    }
+
+    @Test
+    public void testExportConnectorToCanvasWithBlankTargetParent() {
+        final ConnectorExportToCanvasRequestEntity request = new ConnectorExportToCanvasRequestEntity();
+        request.setTargetParentProcessGroupId("   ");
+
+        assertThrows(IllegalArgumentException.class, () ->
+            connectorResource.exportConnectorToCanvas(CONNECTOR_ID, false, request));
+
+        verify(serviceFacade, never()).authorizeAccess(any(AuthorizeAccess.class));
+    }
+
+    @Test
+    public void testExportConnectorToCanvasNotAuthorized() {
+        final ConnectorExportToCanvasRequestEntity request = createExportRequest();
+
+        doThrow(AccessDeniedException.class).when(serviceFacade).authorizeAccess(any(AuthorizeAccess.class));
+
+        assertThrows(AccessDeniedException.class, () ->
+            connectorResource.exportConnectorToCanvas(CONNECTOR_ID, false, request));
+
+        verify(serviceFacade, never()).verifyCanExportConnectorToCanvas(anyString(), anyString(), anyBoolean());
+        verify(serviceFacade, never()).createProcessGroup(any(Revision.class), anyString(), any(ProcessGroupDTO.class));
+    }
+
+    @Test
+    public void testExportConnectorToCanvasCreatesProcessGroupAndAppliesSnapshot() {
+        final ConnectorExportToCanvasRequestEntity request = createExportRequest();
+        final RegisteredFlowSnapshot snapshot = createSnapshot();
+        request.setFlowSnapshot(snapshot);
+
+        final ProcessGroupEntity created = createProcessGroupEntity(PROCESS_GROUP_ID);
+        final ProcessGroupEntity updated = createProcessGroupEntity(PROCESS_GROUP_ID);
+
+        when(serviceFacade.createProcessGroup(any(Revision.class), eq(request.getTargetParentProcessGroupId()), any(ProcessGroupDTO.class)))
+            .thenReturn(created);
+        when(serviceFacade.updateProcessGroupContents(any(Revision.class), eq(PROCESS_GROUP_ID), any(), eq(snapshot), any(), anyBoolean(), anyBoolean(), anyBoolean()))
+            .thenReturn(updated);
+
+        try (Response response = connectorResource.exportConnectorToCanvas(CONNECTOR_ID, false, request)) {
+            assertEquals(201, response.getStatus());
+            assertEquals(updated, response.getEntity());
+        }
+
+        verify(serviceFacade).verifyCanExportConnectorToCanvas(CONNECTOR_ID, request.getTargetParentProcessGroupId(), false);
+        verify(serviceFacade).discoverCompatibleBundles(snapshot.getFlowContents());
+        verify(serviceFacade).createProcessGroup(any(Revision.class), eq(request.getTargetParentProcessGroupId()), any(ProcessGroupDTO.class));
+        verify(serviceFacade).updateProcessGroupContents(any(Revision.class), eq(PROCESS_GROUP_ID), any(), eq(snapshot), any(), anyBoolean(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    public void testExportConnectorToCanvasFetchesSnapshotWhenBodyOmitsIt() {
+        final ConnectorExportToCanvasRequestEntity request = createExportRequest();
+        final RegisteredFlowSnapshot snapshot = createSnapshot();
+
+        when(serviceFacade.getConnectorExportSnapshot(CONNECTOR_ID, true, null)).thenReturn(snapshot);
+
+        final ProcessGroupEntity created = createProcessGroupEntity(PROCESS_GROUP_ID);
+        final ProcessGroupEntity updated = createProcessGroupEntity(PROCESS_GROUP_ID);
+
+        when(serviceFacade.createProcessGroup(any(Revision.class), eq(request.getTargetParentProcessGroupId()), any(ProcessGroupDTO.class)))
+            .thenReturn(created);
+        when(serviceFacade.updateProcessGroupContents(any(Revision.class), eq(PROCESS_GROUP_ID), any(), eq(snapshot), any(), anyBoolean(), anyBoolean(), anyBoolean()))
+            .thenReturn(updated);
+
+        try (Response response = connectorResource.exportConnectorToCanvas(CONNECTOR_ID, true, request)) {
+            assertEquals(201, response.getStatus());
+        }
+
+        verify(serviceFacade).getConnectorExportSnapshot(CONNECTOR_ID, true, null);
+        verify(serviceFacade).verifyCanExportConnectorToCanvas(CONNECTOR_ID, request.getTargetParentProcessGroupId(), true);
+    }
+
+    private ConnectorExportToCanvasRequestEntity createExportRequest() {
+        final ConnectorExportToCanvasRequestEntity request = new ConnectorExportToCanvasRequestEntity();
+        request.setTargetParentProcessGroupId("target-parent-id");
+        request.setProcessGroupName("Exported Group");
+        request.setPosition(new PositionDTO(10.0, 20.0));
+        request.setClientId("client-id");
+        return request;
+    }
+
+    private RegisteredFlowSnapshot createSnapshot() {
+        final RegisteredFlowSnapshot snapshot = new RegisteredFlowSnapshot();
+        final VersionedProcessGroup flowContents = new VersionedProcessGroup();
+        flowContents.setIdentifier("source-pg-id");
+        flowContents.setName("Source PG");
+        snapshot.setFlowContents(flowContents);
+        return snapshot;
+    }
+
+    private ProcessGroupEntity createProcessGroupEntity(final String id) {
+        final ProcessGroupEntity entity = new ProcessGroupEntity();
+        entity.setId(id);
+        final ProcessGroupDTO component = new ProcessGroupDTO();
+        component.setId(id);
+        entity.setComponent(component);
+
+        final RevisionDTO revision = new RevisionDTO();
+        revision.setVersion(0L);
+        revision.setClientId("client-id");
+        entity.setRevision(revision);
+        return entity;
     }
 }

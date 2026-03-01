@@ -85,6 +85,7 @@ import org.apache.nifi.components.connector.ConnectorUpdateContext;
 import org.apache.nifi.components.connector.Secret;
 import org.apache.nifi.components.connector.secrets.AuthorizableSecret;
 import org.apache.nifi.components.state.Scope;
+import org.apache.nifi.components.state.StateManagerProvider;
 import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.components.validation.ValidationState;
 import org.apache.nifi.connectable.Connectable;
@@ -129,6 +130,7 @@ import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flow.ExecutionEngine;
 import org.apache.nifi.flow.ExternalControllerServiceReference;
 import org.apache.nifi.flow.ParameterProviderReference;
+import org.apache.nifi.flow.VersionedAsset;
 import org.apache.nifi.flow.VersionedComponent;
 import org.apache.nifi.flow.VersionedConfigurableExtension;
 import org.apache.nifi.flow.VersionedConnection;
@@ -138,6 +140,7 @@ import org.apache.nifi.flow.VersionedExternalFlowMetadata;
 import org.apache.nifi.flow.VersionedFlowCoordinates;
 import org.apache.nifi.flow.VersionedFunnel;
 import org.apache.nifi.flow.VersionedLabel;
+import org.apache.nifi.flow.VersionedParameter;
 import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedPort;
 import org.apache.nifi.flow.VersionedProcessGroup;
@@ -450,6 +453,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.OAuth2Token;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
@@ -517,6 +522,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     private FlowRegistryDAO flowRegistryDAO;
     private ParameterContextDAO parameterContextDAO;
     private ClusterCoordinator clusterCoordinator;
+    private StateManagerProvider stateManagerProvider;
     private HeartbeatMonitor heartbeatMonitor;
     private LeaderElectionManager leaderElectionManager;
 
@@ -5927,6 +5933,231 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         return getCurrentFlowSnapshotByGroupId(processGroupId, true);
     }
 
+    @Override
+    public RegisteredFlowSnapshot getCurrentFlowSnapshotByGroupId(final String processGroupId, final boolean includeReferencedServices, final boolean includeComponentState) {
+        if (!includeComponentState) {
+            return getCurrentFlowSnapshotByGroupId(processGroupId, includeReferencedServices);
+        }
+
+        final ProcessGroup processGroup = processGroupDAO.getProcessGroup(processGroupId);
+
+        // Validate all processors are stopped and all controller services are disabled
+        final List<ProcessorNode> runningProcessors = processGroup.findAllProcessors().stream()
+                .filter(p -> p.getPhysicalScheduledState() != ScheduledState.STOPPED && p.getPhysicalScheduledState() != ScheduledState.DISABLED)
+                .toList();
+        if (!runningProcessors.isEmpty()) {
+            throw new IllegalStateException("Cannot export component state because %d processor(s) are not stopped: %s".formatted(
+                    runningProcessors.size(),
+                    runningProcessors.stream().map(p -> "%s [%s]".formatted(p.getName(), p.getIdentifier())).limit(5).collect(Collectors.joining(", "))));
+        }
+
+        final List<ControllerServiceNode> enabledServices = processGroup.findAllControllerServices().stream()
+                .filter(s -> s.getState() != ControllerServiceState.DISABLED)
+                .toList();
+        if (!enabledServices.isEmpty()) {
+            throw new IllegalStateException("Cannot export component state because %d controller service(s) are not disabled: %s".formatted(
+                    enabledServices.size(),
+                    enabledServices.stream().map(s -> "%s [%s]".formatted(s.getName(), s.getIdentifier())).limit(5).collect(Collectors.joining(", "))));
+        }
+
+        final FlowMappingOptions mappingOptions = new FlowMappingOptions.Builder()
+                .sensitiveValueEncryptor(null)
+                .stateLookup(VersionedComponentStateLookup.ENABLED_OR_DISABLED)
+                .componentIdLookup(ComponentIdLookup.VERSIONED_OR_GENERATE)
+                .mapPropertyDescriptors(true)
+                .mapSensitiveConfiguration(false)
+                .mapInstanceIdentifiers(false)
+                .mapControllerServiceReferencesToVersionedId(true)
+                .mapFlowRegistryClientId(false)
+                .mapAssetReferences(false)
+                .mapComponentState(includeComponentState)
+                .stateManagerProvider(stateManagerProvider)
+                .localNodeOrdinal(computeLocalNodeOrdinal())
+                .build();
+
+        return buildFlowSnapshot(processGroup, processGroupId, includeReferencedServices, mappingOptions);
+    }
+
+    @Override
+    public RegisteredFlowSnapshot getConnectorExportSnapshot(final String connectorId, final boolean includeComponentState, final String targetParameterContextName) {
+        final ConnectorNode connectorNode = connectorDAO.getConnector(connectorId);
+        final ProcessGroup managedGroup = connectorNode.getActiveFlowContext().getManagedProcessGroup();
+        final String managedGroupId = managedGroup.getIdentifier();
+
+        if (includeComponentState) {
+            final List<ProcessorNode> runningProcessors = managedGroup.findAllProcessors().stream()
+                    .filter(p -> p.getPhysicalScheduledState() != ScheduledState.STOPPED && p.getPhysicalScheduledState() != ScheduledState.DISABLED)
+                    .toList();
+            if (!runningProcessors.isEmpty()) {
+                throw new IllegalStateException("Cannot export connector '%s' with component state because %d processor(s) are not stopped: %s".formatted(
+                        connectorId,
+                        runningProcessors.size(),
+                        runningProcessors.stream().map(p -> "%s [%s]".formatted(p.getName(), p.getIdentifier())).limit(5).collect(Collectors.joining(", "))));
+            }
+
+            final List<ControllerServiceNode> enabledServices = managedGroup.findAllControllerServices().stream()
+                    .filter(s -> s.getState() != ControllerServiceState.DISABLED)
+                    .toList();
+            if (!enabledServices.isEmpty()) {
+                throw new IllegalStateException("Cannot export connector '%s' with component state because %d controller service(s) are not disabled: %s".formatted(
+                        connectorId,
+                        enabledServices.size(),
+                        enabledServices.stream().map(s -> "%s [%s]".formatted(s.getName(), s.getIdentifier())).limit(5).collect(Collectors.joining(", "))));
+            }
+        }
+
+        final FlowMappingOptions mappingOptions = new FlowMappingOptions.Builder()
+                .sensitiveValueEncryptor(null)
+                .stateLookup(VersionedComponentStateLookup.ENABLED_OR_DISABLED)
+                .componentIdLookup(ComponentIdLookup.VERSIONED_OR_GENERATE)
+                .mapPropertyDescriptors(true)
+                .mapSensitiveConfiguration(false)
+                .mapInstanceIdentifiers(false)
+                .mapControllerServiceReferencesToVersionedId(true)
+                .mapFlowRegistryClientId(false)
+                .mapAssetReferences(true)
+                .mapComponentState(includeComponentState)
+                .stateManagerProvider(stateManagerProvider)
+                .localNodeOrdinal(computeLocalNodeOrdinal())
+                .build();
+
+        final RegisteredFlowSnapshot snapshot = buildFlowSnapshot(managedGroup, managedGroupId, false, mappingOptions);
+
+        // Clear any VersionedFlowCoordinates inherited from the connector's managed PG tree: the snapshot is used to
+        // create a fresh, unversioned Process Group on the canvas.
+        if (snapshot.getFlowContents() != null) {
+            snapshot.getFlowContents().setVersionedFlowCoordinates(null);
+        }
+
+        final String resolvedContextName = resolveConnectorExportContextName(connectorNode, targetParameterContextName);
+        renameConnectorExportParameterContext(snapshot, connectorId, resolvedContextName);
+        migrateConnectorExportAssets(snapshot, connectorNode);
+
+        return snapshot;
+    }
+
+    @Override
+    public void verifyCanExportConnectorToCanvas(final String connectorId, final String targetParentProcessGroupId, final boolean includeComponentState) {
+        final ConnectorNode connectorNode = connectorDAO.getConnector(connectorId);
+        if (connectorNode == null) {
+            throw new ResourceNotFoundException("Unable to find connector with id '%s'".formatted(connectorId));
+        }
+
+        // Ensure target parent exists
+        processGroupDAO.getProcessGroup(targetParentProcessGroupId);
+
+        if (includeComponentState && connectorNode.getCurrentState() != ConnectorState.STOPPED) {
+            throw new IllegalStateException(
+                    "Cannot export connector '%s' with component state because it is not STOPPED (current state: %s)"
+                            .formatted(connectorId, connectorNode.getCurrentState()));
+        }
+    }
+
+    private String resolveConnectorExportContextName(final ConnectorNode connectorNode, final String requestedName) {
+        if (requestedName != null && !requestedName.isBlank()) {
+            return requestedName.trim();
+        }
+        final String connectorName = connectorNode.getName();
+        final String baseName = (connectorName == null || connectorName.isBlank()) ? connectorNode.getIdentifier() : connectorName;
+        return "%s Parameters".formatted(baseName);
+    }
+
+    /**
+     * Renames the implicit Parameter Context for the connector inside the snapshot so that, on import, a new
+     * Parameter Context with the user-friendly name is created instead of reusing the connector's internal name.
+     */
+    private void renameConnectorExportParameterContext(final RegisteredFlowSnapshot snapshot, final String connectorId, final String newContextName) {
+        if (snapshot == null || snapshot.getParameterContexts() == null) {
+            return;
+        }
+
+        final String implicitContextName = "Connector " + connectorId + " Parameter Context";
+        final Map<String, VersionedParameterContext> contexts = snapshot.getParameterContexts();
+        final VersionedParameterContext connectorContext = contexts.remove(implicitContextName);
+        if (connectorContext == null) {
+            return;
+        }
+
+        connectorContext.setName(newContextName);
+        contexts.put(newContextName, connectorContext);
+
+        // Update references in the root process group tree
+        if (snapshot.getFlowContents() != null) {
+            updateParameterContextName(snapshot.getFlowContents(), implicitContextName, newContextName);
+        }
+    }
+
+    private void updateParameterContextName(final VersionedProcessGroup group, final String oldName, final String newName) {
+        if (oldName.equals(group.getParameterContextName())) {
+            group.setParameterContextName(newName);
+        }
+        if (group.getProcessGroups() != null) {
+            for (final VersionedProcessGroup child : group.getProcessGroups()) {
+                updateParameterContextName(child, oldName, newName);
+            }
+        }
+    }
+
+    /**
+     * Copies asset-backed parameter values referenced by the connector's Parameter Context from the connector's
+     * asset manager into the global asset manager, rewriting asset identifiers in the snapshot so that, after
+     * import, the resulting canvas Parameter Context points at the global assets.
+     */
+    private void migrateConnectorExportAssets(final RegisteredFlowSnapshot snapshot, final ConnectorNode connectorNode) {
+        if (snapshot == null || snapshot.getParameterContexts() == null) {
+            return;
+        }
+
+        final AssetManager connectorAssetManager = controllerFacade.getConnectorAssetManager();
+        if (connectorAssetManager == null) {
+            return;
+        }
+
+        for (final VersionedParameterContext versionedContext : snapshot.getParameterContexts().values()) {
+            if (versionedContext.getParameters() == null) {
+                continue;
+            }
+
+            for (final VersionedParameter versionedParameter : versionedContext.getParameters()) {
+                final List<VersionedAsset> referencedAssets = versionedParameter.getReferencedAssets();
+                if (referencedAssets == null || referencedAssets.isEmpty()) {
+                    continue;
+                }
+
+                for (final VersionedAsset versionedAsset : referencedAssets) {
+                    final String sourceAssetId = versionedAsset.getIdentifier();
+                    if (sourceAssetId == null) {
+                        continue;
+                    }
+
+                    final Optional<Asset> source = connectorAssetManager.getAsset(sourceAssetId);
+                    if (source.isEmpty()) {
+                        logger.warn("Connector [{}] asset [{}] referenced by parameter [{}] could not be located; skipping",
+                                connectorNode.getIdentifier(), sourceAssetId, versionedParameter.getName());
+                        continue;
+                    }
+
+                    final Asset sourceAsset = source.get();
+                    final File sourceFile = sourceAsset.getFile();
+                    if (sourceFile == null || !sourceFile.exists()) {
+                        logger.warn("Connector [{}] asset [{}] referenced by parameter [{}] is missing from disk at [{}]; skipping",
+                                connectorNode.getIdentifier(), sourceAssetId, versionedParameter.getName(),
+                                sourceFile == null ? "<unknown>" : sourceFile.getAbsolutePath());
+                        continue;
+                    }
+
+                    try (InputStream input = new FileInputStream(sourceFile)) {
+                        final Asset copiedAsset = assetManager.createAsset(versionedContext.getName(), sourceAsset.getName(), input);
+                        versionedAsset.setIdentifier(copiedAsset.getIdentifier());
+                    } catch (final IOException ioe) {
+                        throw new NiFiCoreException("Failed to copy connector asset [%s] for parameter [%s]"
+                                .formatted(sourceAssetId, versionedParameter.getName()), ioe);
+                    }
+                }
+            }
+        }
+    }
+
     private Set<String> getAllSubGroups(ProcessGroup processGroup) {
         final Set<String> result = processGroup.findAllProcessGroups().stream()
                 .map(ProcessGroup::getIdentifier)
@@ -5935,24 +6166,58 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         return result;
     }
 
+    /**
+     * Computes the ordinal index of the local node among connected cluster nodes.
+     * Nodes are sorted deterministically by apiAddress. In standalone mode, returns 0.
+     *
+     * @return the ordinal index of the local node, or 0 if not clustered
+     */
+    private int computeLocalNodeOrdinal() {
+        if (clusterCoordinator == null) {
+            return 0;
+        }
+
+        final NodeIdentifier localNodeId = clusterCoordinator.getLocalNodeIdentifier();
+        if (localNodeId == null) {
+            return 0;
+        }
+
+        final List<NodeIdentifier> connectedNodes = clusterCoordinator.getNodeIdentifiers(NodeConnectionState.CONNECTED).stream()
+                .sorted(Comparator.comparing((NodeIdentifier n) -> n.getApiAddress()).thenComparingInt(NodeIdentifier::getApiPort))
+                .toList();
+
+        for (int i = 0; i < connectedNodes.size(); i++) {
+            if (connectedNodes.get(i).equals(localNodeId)) {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
     private RegisteredFlowSnapshot getCurrentFlowSnapshotByGroupId(final String processGroupId, final boolean includeReferencedControllerServices) {
         final ProcessGroup processGroup = processGroupDAO.getProcessGroup(processGroupId);
+        return buildFlowSnapshot(processGroup, processGroupId, includeReferencedControllerServices, null);
+    }
 
+    private RegisteredFlowSnapshot buildFlowSnapshot(final ProcessGroup processGroup, final String processGroupId,
+                                                      final boolean includeReferencedControllerServices, final FlowMappingOptions customMappingOptions) {
         // Create a complete (include descendant flows) VersionedProcessGroup snapshot of the flow as it is
         // currently without any registry related fields populated, even if the flow is currently versioned.
-        final VersionedComponentFlowMapper mapper = makeNiFiRegistryFlowMapper(controllerFacade.getExtensionManager());
+        final VersionedComponentFlowMapper mapper = customMappingOptions != null
+                ? makeNiFiRegistryFlowMapper(controllerFacade.getExtensionManager(), customMappingOptions)
+                : makeNiFiRegistryFlowMapper(controllerFacade.getExtensionManager());
+
         final InstantiatedVersionedProcessGroup nonVersionedProcessGroup =
                 mapper.mapNonVersionedProcessGroup(processGroup, controllerFacade.getControllerServiceProvider());
 
         final Map<String, ParameterProviderReference> parameterProviderReferences = new HashMap<>();
-
-        // Create a complete (include descendant flows) map of parameter contexts
         final Map<String, VersionedParameterContext> parameterContexts = mapper.mapParameterContexts(processGroup, true, parameterProviderReferences);
 
         final Map<String, ExternalControllerServiceReference> externalControllerServiceReferences =
                 Optional.ofNullable(nonVersionedProcessGroup.getExternalControllerServiceReferences()).orElse(Collections.emptyMap());
         final Set<VersionedControllerService> controllerServices = new HashSet<>(nonVersionedProcessGroup.getControllerServices());
-        final RegisteredFlowSnapshot nonVersionedFlowSnapshot = new RegisteredFlowSnapshot();
+        final RegisteredFlowSnapshot flowSnapshot = new RegisteredFlowSnapshot();
 
         ProcessGroup parentGroup = processGroup.getParent();
 
@@ -5968,24 +6233,25 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
                     if (externalControllerServiceReferences.keySet().contains(versionedControllerService.getIdentifier())) {
                         versionedControllerService.setGroupIdentifier(processGroupId);
+                        versionedControllerService.setComponentState(null);
                         externalServices.add(versionedControllerService);
                     }
                 }
             } while ((parentGroup = parentGroup.getParent()) != null);
 
             controllerServices.addAll(externalServices);
-            nonVersionedFlowSnapshot.setExternalControllerServices(new HashMap<>());
+            flowSnapshot.setExternalControllerServices(new HashMap<>());
         } else {
-            nonVersionedFlowSnapshot.setExternalControllerServices(externalControllerServiceReferences);
+            flowSnapshot.setExternalControllerServices(externalControllerServiceReferences);
         }
 
         nonVersionedProcessGroup.setControllerServices(controllerServices);
-        nonVersionedFlowSnapshot.setFlowContents(nonVersionedProcessGroup);
-        nonVersionedFlowSnapshot.setParameterProviders(parameterProviderReferences);
-        nonVersionedFlowSnapshot.setParameterContexts(parameterContexts);
-        nonVersionedFlowSnapshot.setFlowEncodingVersion(FlowRegistryUtil.FLOW_ENCODING_VERSION);
+        flowSnapshot.setFlowContents(nonVersionedProcessGroup);
+        flowSnapshot.setParameterProviders(parameterProviderReferences);
+        flowSnapshot.setParameterContexts(parameterContexts);
+        flowSnapshot.setFlowEncodingVersion(FlowRegistryUtil.FLOW_ENCODING_VERSION);
 
-        return nonVersionedFlowSnapshot;
+        return flowSnapshot;
     }
 
     @Override
@@ -7927,6 +8193,11 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     @Autowired(required = false)
     public void setClusterCoordinator(final ClusterCoordinator coordinator) {
         this.clusterCoordinator = coordinator;
+    }
+
+    @Autowired
+    public void setStateManagerProvider(final StateManagerProvider stateManagerProvider) {
+        this.stateManagerProvider = stateManagerProvider;
     }
 
     @Autowired(required = false)

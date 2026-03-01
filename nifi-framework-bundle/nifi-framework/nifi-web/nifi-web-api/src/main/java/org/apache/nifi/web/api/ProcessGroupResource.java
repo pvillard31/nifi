@@ -62,9 +62,11 @@ import org.apache.nifi.connectable.ConnectableType;
 import org.apache.nifi.flow.ConnectableComponent;
 import org.apache.nifi.flow.ExecutionEngine;
 import org.apache.nifi.flow.VersionedComponent;
+import org.apache.nifi.flow.VersionedControllerService;
 import org.apache.nifi.flow.VersionedFlowCoordinates;
 import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.flow.VersionedProcessor;
 import org.apache.nifi.flow.VersionedPropertyDescriptor;
 import org.apache.nifi.groups.VersionedComponentAdditions;
 import org.apache.nifi.parameter.ParameterContext;
@@ -127,6 +129,7 @@ import org.apache.nifi.web.api.entity.RemoteProcessGroupsEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
 import org.apache.nifi.web.api.request.LongParameter;
 import org.apache.nifi.web.util.ParameterContextReplacer;
+import org.apache.nifi.web.util.ReplicatedFlowSnapshotResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -290,7 +293,8 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
             },
             security = {
-                    @SecurityRequirement(name = "Read - /process-groups/{uuid}")
+                    @SecurityRequirement(name = "Read - /process-groups/{uuid}"),
+                    @SecurityRequirement(name = "Write - /process-groups/{uuid} - Only required when includeComponentState is true")
             }
     )
     public Response exportProcessGroup(
@@ -301,19 +305,42 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
             @PathParam("id") final String groupId,
             @Parameter(description = "If referenced services from outside the target group should be included")
             @QueryParam("includeReferencedServices")
-            @DefaultValue("false") boolean includeReferencedServices) {
-        // authorize access
+            @DefaultValue("false") final boolean includeReferencedServices,
+            @Parameter(description = "If component state should be included in the exported flow definition. "
+                    + "Requires all processors to be stopped and all controller services to be disabled.")
+            @QueryParam("includeComponentState")
+            @DefaultValue("false") final boolean includeComponentState) {
+
+        // When exporting with component state in a cluster, replicate to all nodes so that each node
+        // contributes its LOCAL state. The coordinator merges the localNodeStates maps from all responses.
+        if (includeComponentState && isReplicateRequest()) {
+            final ReplicatedFlowSnapshotResult result = replicateAndMergeFlowExport();
+            if (result.isPassthrough()) {
+                return result.passthroughResponse();
+            }
+            final RegisteredFlowSnapshot mergedSnapshot = result.snapshot();
+            final String mergedFlowName = mergedSnapshot.getFlowContents().getName();
+            final String mergedFilename = mergedFlowName.replaceAll("\\s", "_") + ".json";
+            return generateOkResponse(mergedSnapshot).header(HttpHeaders.CONTENT_DISPOSITION, String.format("attachment; filename=\"%s\"", mergedFilename)).build();
+        }
+
+        // authorize access — exporting with component state requires WRITE (state access requires write permission)
+        final RequestAction requiredAction = includeComponentState ? RequestAction.WRITE : RequestAction.READ;
         serviceFacade.authorizeAccess(lookup -> {
-            // ensure access to process groups (nested), encapsulated controller services and referenced parameter contexts
             final ProcessGroupAuthorizable groupAuthorizable = lookup.getProcessGroup(groupId);
-            authorizeProcessGroup(groupAuthorizable, authorizer, lookup, RequestAction.READ, true,
+            authorizeProcessGroup(groupAuthorizable, authorizer, lookup, requiredAction, true,
                     false, false, false, true);
         });
 
         // get the versioned flow
-        final RegisteredFlowSnapshot currentVersionedFlowSnapshot = includeReferencedServices
-                ? serviceFacade.getCurrentFlowSnapshotByGroupIdWithReferencedControllerServices(groupId)
-                : serviceFacade.getCurrentFlowSnapshotByGroupId(groupId);
+        final RegisteredFlowSnapshot currentVersionedFlowSnapshot;
+        if (includeComponentState) {
+            currentVersionedFlowSnapshot = serviceFacade.getCurrentFlowSnapshotByGroupId(groupId, includeReferencedServices, true);
+        } else if (includeReferencedServices) {
+            currentVersionedFlowSnapshot = serviceFacade.getCurrentFlowSnapshotByGroupIdWithReferencedControllerServices(groupId);
+        } else {
+            currentVersionedFlowSnapshot = serviceFacade.getCurrentFlowSnapshotByGroupId(groupId);
+        }
 
         // determine the name of the attachment - possible issues with spaces in file names
         final VersionedProcessGroup currentVersionedProcessGroup = currentVersionedFlowSnapshot.getFlowContents();
@@ -2582,6 +2609,11 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
             throw new IllegalArgumentException("Versioned Flow Snapshot must be supplied");
         }
 
+        if (containsComponentState(versionedFlowSnapshot.getFlowContents())) {
+            throw new IllegalArgumentException("Cannot replace an existing Process Group with a flow definition that contains component state. "
+                    + "Component state can only be restored when uploading a flow definition as a new Process Group.");
+        }
+
         // remove any registry-specific versioning content which could be present if the flow was exported from registry
         versionedFlowSnapshot.setFlow(null);
         versionedFlowSnapshot.setBucket(null);
@@ -2604,6 +2636,31 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
         for (final VersionedProcessGroup innerVersionedProcessGroup : versionedProcessGroup.getProcessGroups()) {
             sanitizeRegistryInfo(innerVersionedProcessGroup);
         }
+    }
+
+    private boolean containsComponentState(final VersionedProcessGroup group) {
+        if (group.getProcessors() != null) {
+            for (final VersionedProcessor processor : group.getProcessors()) {
+                if (processor.getComponentState() != null) {
+                    return true;
+                }
+            }
+        }
+        if (group.getControllerServices() != null) {
+            for (final VersionedControllerService service : group.getControllerServices()) {
+                if (service.getComponentState() != null) {
+                    return true;
+                }
+            }
+        }
+        if (group.getProcessGroups() != null) {
+            for (final VersionedProcessGroup child : group.getProcessGroups()) {
+                if (containsComponentState(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -3243,6 +3300,11 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
         final RegisteredFlowSnapshot requestFlowSnapshot = importEntity.getVersionedFlowSnapshot();
         if (requestFlowSnapshot == null) {
             throw new IllegalArgumentException("Versioned Flow Snapshot must be supplied.");
+        }
+
+        if (containsComponentState(requestFlowSnapshot.getFlowContents())) {
+            throw new IllegalArgumentException("Cannot replace an existing Process Group with a flow definition that contains component state. "
+                    + "Component state can only be restored when uploading a flow definition as a new Process Group.");
         }
 
         // Perform the request

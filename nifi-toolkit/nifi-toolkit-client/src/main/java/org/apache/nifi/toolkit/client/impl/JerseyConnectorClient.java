@@ -31,9 +31,11 @@ import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepNamesEntity;
 import org.apache.nifi.web.api.entity.ConnectorEntity;
+import org.apache.nifi.web.api.entity.ConnectorExportToCanvasRequestEntity;
 import org.apache.nifi.web.api.entity.ConnectorPropertyAllowableValuesEntity;
 import org.apache.nifi.web.api.entity.ConnectorRunStatusEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
+import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.VerifyConnectorConfigStepRequestEntity;
@@ -668,6 +670,26 @@ public class JerseyConnectorClient extends AbstractJerseyClient implements Conne
                 .resolveTemplate("controllerServiceId", controllerServiceId);
 
             return getRequestBuilder(target).post(null, ComponentStateEntity.class);
+        });
+    }
+
+    @Override
+    public ProcessGroupEntity exportToCanvas(final String connectorId, final boolean includeComponentState,
+            final ConnectorExportToCanvasRequestEntity request) throws NiFiClientException, IOException {
+        if (StringUtils.isBlank(connectorId)) {
+            throw new IllegalArgumentException("Connector id cannot be null or blank");
+        }
+        Objects.requireNonNull(request, "Export request is required");
+
+        return executeAction("Error exporting Connector to canvas for Connector " + connectorId, () -> {
+            final WebTarget target = connectorTarget
+                .path("/export-to-canvas")
+                .queryParam("includeComponentState", includeComponentState)
+                .resolveTemplate("id", connectorId);
+
+            return getRequestBuilder(target).post(
+                Entity.entity(request, MediaType.APPLICATION_JSON_TYPE),
+                ProcessGroupEntity.class);
         });
     }
 }

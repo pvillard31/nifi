@@ -56,6 +56,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anySet;
@@ -604,6 +605,30 @@ public class TestStandardConnectorNode {
 
         assertEquals(ConnectorState.STOPPED, connectorNode.getCurrentState());
         assertEquals(ConnectorState.STOPPED, connectorNode.getDesiredState());
+    }
+
+    @Test
+    public void testExportToCanvasActionIsAvailableAndAllowed() throws Exception {
+        final StandardConnectorNode connectorNode = createConnectorNode();
+        assertEquals(ConnectorState.STOPPED, connectorNode.getCurrentState());
+
+        final ConnectorAction stoppedAction = findAction(connectorNode, "EXPORT_TO_CANVAS");
+        assertTrue(stoppedAction.isAllowed());
+        assertNull(stoppedAction.getReasonNotAllowed());
+
+        connectorNode.start(scheduler).get(5, TimeUnit.SECONDS);
+        assertEquals(ConnectorState.RUNNING, connectorNode.getCurrentState());
+
+        final ConnectorAction runningAction = findAction(connectorNode, "EXPORT_TO_CANVAS");
+        assertTrue(runningAction.isAllowed(), "Export to canvas should always be allowed; state export requires stopped state");
+        assertEquals("Connector must be stopped to export component state to the canvas", runningAction.getReasonNotAllowed());
+    }
+
+    private ConnectorAction findAction(final StandardConnectorNode connectorNode, final String actionName) {
+        return connectorNode.getAvailableActions().stream()
+            .filter(action -> actionName.equals(action.getName()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Action not found: " + actionName));
     }
 
     @Test

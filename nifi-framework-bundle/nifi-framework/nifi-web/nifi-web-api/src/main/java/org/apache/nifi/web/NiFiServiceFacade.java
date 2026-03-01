@@ -1846,6 +1846,43 @@ public interface NiFiServiceFacade {
     RegisteredFlowSnapshot getCurrentFlowSnapshotByGroupIdWithReferencedControllerServices(String processGroupId);
 
     /**
+     * Get the current state of the Process Group with the given ID, converted to a Versioned Flow Snapshot for download.
+     * Optionally includes referenced controller services from parent groups and component state.
+     *
+     * @param processGroupId the ID of the Process Group
+     * @param includeReferencedServices whether to include referenced controller services from parent groups
+     * @param includeComponentState whether to include component state in the export. When true, all processors must be stopped
+     *                              and all controller services must be disabled.
+     * @return the current Process Group converted to a Versioned Flow Snapshot for download
+     */
+    RegisteredFlowSnapshot getCurrentFlowSnapshotByGroupId(String processGroupId, boolean includeReferencedServices, boolean includeComponentState);
+
+    /**
+     * Builds a {@link RegisteredFlowSnapshot} for the managed ProcessGroup of a Connector. The snapshot includes
+     * the Connector's implicit Parameter Context renamed using the supplied {@code targetParameterContextName},
+     * copies any asset-backed parameter values from the Connector's local asset manager into the global asset
+     * manager (rewriting the asset references in the snapshot), and optionally includes component state.
+     *
+     * @param connectorId the id of the Connector
+     * @param includeComponentState whether to include LOCAL and CLUSTER component state; when true, the Connector
+     *                              must be STOPPED and all processors/controller services in its managed flow
+     *                              must be stopped/disabled
+     * @param targetParameterContextName the target name to assign to the exported Parameter Context; if blank a
+     *                                   name derived from the Connector is used
+     * @return the built snapshot ready for import on the canvas
+     */
+    RegisteredFlowSnapshot getConnectorExportSnapshot(String connectorId, boolean includeComponentState, String targetParameterContextName);
+
+    /**
+     * Verifies that the given Connector can be exported to the canvas under the given target parent Process Group.
+     *
+     * @param connectorId the id of the Connector to export
+     * @param targetParentProcessGroupId the id of the parent Process Group under which the exported PG will be created
+     * @param includeComponentState whether component state is requested as part of the export
+     */
+    void verifyCanExportConnectorToCanvas(String connectorId, String targetParentProcessGroupId, boolean includeComponentState);
+
+    /**
      * Returns the name of the Flow Registry that is registered with the given ID. If no Flow Registry exists with the given ID, will return
      * the ID itself as the name
      *

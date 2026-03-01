@@ -20,6 +20,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.core.CacheControl;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
@@ -42,6 +43,7 @@ import org.apache.nifi.authorization.resource.Authorizable;
 import org.apache.nifi.authorization.user.NiFiUser;
 import org.apache.nifi.authorization.user.NiFiUserUtils;
 import org.apache.nifi.cluster.coordination.ClusterCoordinator;
+import org.apache.nifi.cluster.coordination.http.replication.AsyncClusterResponse;
 import org.apache.nifi.cluster.coordination.http.replication.RequestReplicationHeader;
 import org.apache.nifi.cluster.coordination.http.replication.RequestReplicator;
 import org.apache.nifi.cluster.coordination.node.NodeConnectionState;
@@ -52,6 +54,7 @@ import org.apache.nifi.cluster.manager.exception.IllegalClusterStateException;
 import org.apache.nifi.cluster.manager.exception.UnknownNodeException;
 import org.apache.nifi.cluster.protocol.NodeIdentifier;
 import org.apache.nifi.controller.FlowController;
+import org.apache.nifi.registry.flow.RegisteredFlowSnapshot;
 import org.apache.nifi.remote.HttpRemoteSiteListener;
 import org.apache.nifi.remote.VersionNegotiator;
 import org.apache.nifi.remote.exception.BadRequestException;
@@ -80,6 +83,8 @@ import org.apache.nifi.web.security.cookie.StandardApplicationCookieService;
 import org.apache.nifi.web.security.util.CacheKey;
 import org.apache.nifi.web.servlet.shared.ProxyHeader;
 import org.apache.nifi.web.servlet.shared.RequestUriBuilder;
+import org.apache.nifi.web.util.ReplicatedFlowSnapshotResult;
+import org.apache.nifi.web.util.VersionedFlowSnapshotMerger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -931,6 +936,82 @@ public abstract class ApplicationResource {
             return getRequestReplicator().replicate(coordinatorNodes, method, getAbsolutePath(), entity, getHeaders(), true, false).awaitMergedResponse().getResponse();
         } catch (final InterruptedException ie) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Request to " + method + " " + getAbsolutePath() + " was interrupted").type("text/plain").build();
+        }
+    }
+
+    /**
+     * Replicates the current GET request to all cluster nodes, collecting each node's
+     * {@link RegisteredFlowSnapshot} response and merging their LOCAL component state into a single snapshot.
+     * Used to support flow-export endpoints that include component state, because each node only holds its
+     * own LOCAL state.
+     *
+     * <p>If the current node is not the active cluster coordinator, the request is forwarded to the coordinator
+     * and the coordinator's {@link Response} is returned via {@link ReplicatedFlowSnapshotResult#passthroughResponse()}.
+     * If any node returns a non-2xx response, that response is also returned as passthrough.
+     * Otherwise, the merged {@link RegisteredFlowSnapshot} is returned via {@link ReplicatedFlowSnapshotResult#snapshot()}.
+     *
+     * @return the merged snapshot result
+     */
+    protected ReplicatedFlowSnapshotResult replicateAndMergeFlowExport() {
+        return replicateAndMergeFlowExport(getAbsolutePath(), getRequestParameters());
+    }
+
+    /**
+     * Variant of {@link #replicateAndMergeFlowExport()} that targets an explicit URI and request parameters,
+     * which allows a handler on the coordinator to gather a merged snapshot from a different endpoint (for
+     * example, gathering state via a GET endpoint from within a POST handler).
+     *
+     * @param targetUri the URI to replicate the GET request to
+     * @param targetParameters the request parameters to forward to each node
+     * @return the merged snapshot result
+     */
+    protected ReplicatedFlowSnapshotResult replicateAndMergeFlowExport(final URI targetUri, final MultivaluedMap<String, String> targetParameters) {
+        final Map<String, String> headers = getHeaders();
+
+        try {
+            final AsyncClusterResponse asyncResponse;
+            if (getReplicationTarget() == ReplicationTarget.CLUSTER_NODES) {
+                asyncResponse = getRequestReplicator().replicate(HttpMethod.GET, targetUri, targetParameters, headers);
+            } else {
+                final Response forwarded = getRequestReplicator().forwardToCoordinator(
+                        getClusterCoordinatorNode(), HttpMethod.GET, targetUri, targetParameters, headers
+                ).awaitMergedResponse().getResponse();
+                return ReplicatedFlowSnapshotResult.passthrough(forwarded);
+            }
+
+            asyncResponse.awaitMergedResponse();
+            final Set<NodeResponse> nodeResponses = asyncResponse.getCompletedNodeResponses();
+
+            for (final NodeResponse nodeResponse : nodeResponses) {
+                if (!nodeResponse.is2xx()) {
+                    return ReplicatedFlowSnapshotResult.passthrough(nodeResponse.getResponse());
+                }
+            }
+
+            RegisteredFlowSnapshot mergedSnapshot = null;
+            for (final NodeResponse nodeResponse : nodeResponses) {
+                final RegisteredFlowSnapshot nodeSnapshot = nodeResponse.getClientResponse().readEntity(RegisteredFlowSnapshot.class);
+                if (mergedSnapshot == null) {
+                    mergedSnapshot = nodeSnapshot;
+                } else {
+                    VersionedFlowSnapshotMerger.mergeLocalNodeStates(mergedSnapshot.getFlowContents(), nodeSnapshot.getFlowContents());
+                }
+            }
+
+            if (mergedSnapshot == null) {
+                return ReplicatedFlowSnapshotResult.passthrough(Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                        .entity("No responses received from cluster nodes")
+                        .type(MediaType.TEXT_PLAIN)
+                        .build());
+            }
+
+            return ReplicatedFlowSnapshotResult.merged(mergedSnapshot);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ReplicatedFlowSnapshotResult.passthrough(Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Request was interrupted while waiting for cluster responses")
+                    .type(MediaType.TEXT_PLAIN)
+                    .build());
         }
     }
 

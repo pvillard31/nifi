@@ -22,8 +22,10 @@ import org.apache.nifi.web.api.entity.ComponentStateEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepEntity;
 import org.apache.nifi.web.api.entity.ConfigurationStepNamesEntity;
 import org.apache.nifi.web.api.entity.ConnectorEntity;
+import org.apache.nifi.web.api.entity.ConnectorExportToCanvasRequestEntity;
 import org.apache.nifi.web.api.entity.ConnectorPropertyAllowableValuesEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
+import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupStatusEntity;
 import org.apache.nifi.web.api.entity.VerifyConnectorConfigStepRequestEntity;
@@ -410,6 +412,19 @@ public interface ConnectorClient {
      * @throws IOException if an I/O error occurs
      */
     ComponentStateEntity clearControllerServiceState(String connectorId, String controllerServiceId) throws NiFiClientException, IOException;
+
+    /**
+     * Exports the flow managed by a connector to the canvas as a new Process Group.
+     *
+     * @param connectorId the connector ID
+     * @param includeComponentState whether to include component state in the exported flow
+     * @param request the export request payload
+     * @return the newly created Process Group entity
+     * @throws NiFiClientException if an error occurs during the request
+     * @throws IOException if an I/O error occurs
+     */
+    ProcessGroupEntity exportToCanvas(String connectorId, boolean includeComponentState,
+            ConnectorExportToCanvasRequestEntity request) throws NiFiClientException, IOException;
 
     /**
      * Indicates that mutable requests should indicate that the client has

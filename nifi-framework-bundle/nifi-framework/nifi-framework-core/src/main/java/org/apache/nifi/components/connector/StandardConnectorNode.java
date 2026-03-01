@@ -1157,8 +1157,14 @@ public class StandardConnectorNode implements ConnectorNode {
         actions.add(createCancelDrainFlowFilesAction(currentState == ConnectorState.DRAINING));
         actions.add(createApplyUpdatesAction(currentState));
         actions.add(createDeleteAction(stopped, dataQueued));
+        actions.add(createExportToCanvasAction(stopped));
 
         return actions;
+    }
+
+    private ConnectorAction createExportToCanvasAction(final boolean stopped) {
+        final String reason = stopped ? null : "Connector must be stopped to export component state to the canvas";
+        return new StandardConnectorAction("EXPORT_TO_CANVAS", "Export the connector's flow to the canvas as a new Process Group", true, reason);
     }
 
     private boolean isStopped() {
