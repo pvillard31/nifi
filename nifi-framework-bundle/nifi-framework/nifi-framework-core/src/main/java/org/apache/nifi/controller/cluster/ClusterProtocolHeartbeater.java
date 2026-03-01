@@ -34,7 +34,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -60,8 +59,14 @@ public class ClusterProtocolHeartbeater implements Heartbeater {
 
     @Override
     public String getHeartbeatAddress() {
-        final Optional<String> clusterCoordinator = electionManager.getLeader(ClusterRoles.CLUSTER_COORDINATOR);
-        return clusterCoordinator.orElseThrow(() -> new ProtocolException("Unable to send heartbeat: Cluster Coordinator not found"));
+        final String address = electionManager.getLeader(ClusterRoles.CLUSTER_COORDINATOR)
+            .orElseThrow(() -> new ProtocolException("Unable to send heartbeat: Cluster Coordinator not found"));
+
+        if (!address.contains(":")) {
+            throw new ProtocolException("Unable to send heartbeat: Cluster Coordinator address [%s] is not in the expected <hostname>:<port> format".formatted(address));
+        }
+
+        return address;
     }
 
     @Override
