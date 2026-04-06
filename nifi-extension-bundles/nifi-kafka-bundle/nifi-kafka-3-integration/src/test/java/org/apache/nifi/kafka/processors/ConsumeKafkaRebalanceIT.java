@@ -36,6 +36,7 @@ import org.apache.nifi.kafka.service.api.record.ByteRecord;
 import org.apache.nifi.kafka.service.consumer.Kafka3ConsumerService;
 import org.apache.nifi.kafka.service.consumer.Subscription;
 import org.apache.nifi.logging.ComponentLog;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
@@ -391,7 +392,7 @@ class ConsumeKafkaRebalanceIT extends AbstractConsumeKafkaIT {
                     }
                     service1.close();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    logger.error("Consumer 1 error", e);
                 } finally {
                     testComplete.countDown();
                 }
@@ -434,7 +435,7 @@ class ConsumeKafkaRebalanceIT extends AbstractConsumeKafkaIT {
                     }
                     service2.close();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    logger.error("Consumer 2 error", e);
                 } finally {
                     testComplete.countDown();
                 }
@@ -603,19 +604,17 @@ class ConsumeKafkaRebalanceIT extends AbstractConsumeKafkaIT {
             executor.shutdownNow();
         }
 
-        // If a rebalance occurred for consumer 1, verify the callback saw the CORRECT session context
-        if (sessionSeenInCallback1.get() != null) {
-            logger.info("Consumer 1 callback saw session: {}, expected: session-1", sessionSeenInCallback1.get());
+        // Skip the test if no rebalance occurred - we can't verify the thread-safety property without it
+        Assumptions.assumeTrue(sessionSeenInCallback1.get() != null,
+                "No rebalance occurred for consumer 1 - test is inconclusive");
 
-            // With per-service session context, consumer 1's callback should see "session-1"
-            // (its own session context), not "session-2" (consumer 2's session context)
-            assertEquals("session-1", sessionSeenInCallback1.get(),
-                    "Per-service session context failed! Consumer 1's rebalance callback saw the wrong session. " +
-                    "Expected 'session-1' but got '" + sessionSeenInCallback1.get() + "'.");
-        } else {
-            // If no rebalance occurred, we can't verify in this run
-            logger.info("No rebalance occurred for consumer 1 in this test run - test is inconclusive");
-        }
+        logger.info("Consumer 1 callback saw session: {}, expected: session-1", sessionSeenInCallback1.get());
+
+        // With per-service session context, consumer 1's callback should see "session-1"
+        // (its own session context), not "session-2" (consumer 2's session context)
+        assertEquals("session-1", sessionSeenInCallback1.get(),
+                "Per-service session context failed! Consumer 1's rebalance callback saw the wrong session. " +
+                "Expected 'session-1' but got '" + sessionSeenInCallback1.get() + "'.");
     }
 
     /**

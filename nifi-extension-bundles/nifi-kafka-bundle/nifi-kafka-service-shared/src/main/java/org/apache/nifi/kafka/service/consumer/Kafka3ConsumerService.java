@@ -70,7 +70,7 @@ public class Kafka3ConsumerService implements KafkaConsumerService, Closeable, C
     }
 
     public Kafka3ConsumerService(final ComponentLog componentLog, final Consumer<byte[], byte[]> consumer,
-                                  final Subscription subscription, final RebalanceCallback rebalanceCallback) {
+            final Subscription subscription, final RebalanceCallback rebalanceCallback) {
         this.componentLog = Objects.requireNonNull(componentLog, "Component Log required");
         this.consumer = consumer;
         this.subscription = subscription;

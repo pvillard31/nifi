@@ -432,9 +432,7 @@ public class ConsumeKafka extends AbstractProcessor implements VerifiableProcess
         final OffsetTracker offsetTracker = new OffsetTracker();
         boolean recordsReceived = false;
 
-        final RebalanceSessionHolder sessionHolder = new RebalanceSessionHolder();
-        sessionHolder.session = session;
-        sessionHolder.offsetTracker = offsetTracker;
+        final RebalanceSessionHolder sessionHolder = new RebalanceSessionHolder(session, offsetTracker);
         consumerService.setSessionContext(sessionHolder);
 
         try {
@@ -490,7 +488,10 @@ public class ConsumeKafka extends AbstractProcessor implements VerifiableProcess
                 return;
             }
 
-            // If no records received but we have revoked partitions, we still need to commit their offsets
+            // If no records received but we have revoked partitions, we still need to commit their offsets.
+            // Note: When a rebalance callback is registered (which is the case in this processor), offsets for
+            // revoked partitions are committed synchronously during onPartitionsRevoked(), so hasRevokedPartitions()
+            // will return false. This code path exists for backward compatibility when no callback is registered.
             if (!recordsReceived && consumerService.hasRevokedPartitions()) {
                 getLogger().debug("No records received but rebalance occurred, committing offsets for revoked partitions");
                 try {
@@ -524,7 +525,9 @@ public class ConsumeKafka extends AbstractProcessor implements VerifiableProcess
                 });
             }
 
-            // After successful session commit, also commit offsets for any partitions that were revoked during rebalance
+            // After successful session commit, also commit offsets for any partitions that were revoked during rebalance.
+            // Note: When a rebalance callback is registered, this check will always be false since offsets are
+            // committed synchronously during onPartitionsRevoked(). This code path is for backward compatibility.
             if (consumerService.hasRevokedPartitions()) {
                 getLogger().debug("Committing offsets for partitions revoked during rebalance");
                 consumerService.commitOffsetsForRevokedPartitions();
@@ -717,11 +720,6 @@ public class ConsumeKafka extends AbstractProcessor implements VerifiableProcess
                 final ProcessSession session = holder.session;
                 final OffsetTracker offsetTracker = holder.offsetTracker;
 
-                if (session == null) {
-                    getLogger().debug("No active session during rebalance callback, nothing to commit");
-                    return;
-                }
-
                 getLogger().info("Rebalance callback invoked for {} revoked partitions, committing session synchronously",
                         revokedPartitions.size());
 
@@ -833,7 +831,12 @@ public class ConsumeKafka extends AbstractProcessor implements VerifiableProcess
     }
 
     private static class RebalanceSessionHolder implements SessionContext {
-        private volatile ProcessSession session;
-        private volatile OffsetTracker offsetTracker;
+        private final ProcessSession session;
+        private final OffsetTracker offsetTracker;
+
+        RebalanceSessionHolder(final ProcessSession session, final OffsetTracker offsetTracker) {
+            this.session = session;
+            this.offsetTracker = offsetTracker;
+        }
     }
 }
