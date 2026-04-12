@@ -1679,6 +1679,11 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
         final Set<String> updatedParameterNames = getUpdatedParameterNames(parameterContextDto);
 
+        // Extend the updated parameter names with cascading names from parameter value references.
+        // If a context P inherits from the updated context S, and P has a local parameter X = #{Parameter_In_S},
+        // then X is effectively updated when Parameter_In_S changes.
+        final Set<String> extendedParameterNames = extendWithParameterValueReferences(updatedParameterNames, groupsReferencingParameterContext);
+
         // Clear set of Affected Components for each Parameter. This parameter is read-only and it will be populated below.
         for (final ParameterEntity parameterEntity : parameterContextDto.getParameters()) {
             parameterEntity.getParameter().setReferencingComponents(new HashSet<>());
@@ -1699,7 +1704,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
             for (final ProcessorNode processor : group.getProcessors()) {
                 if (includeInactive || processor.isRunning()) {
                     final Set<String> referencedParams = processor.getReferencedParameterNames();
-                    final boolean referencesUpdatedParam = referencedParams.stream().anyMatch(updatedParameterNames::contains);
+                    final boolean referencesUpdatedParam = referencedParams.stream().anyMatch(extendedParameterNames::contains);
 
                     if (referencesUpdatedParam) {
                         affectedComponents.add(processor);
@@ -1721,7 +1726,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
             for (final ControllerServiceNode service : group.getControllerServices(false)) {
                 if (includeInactive || service.isActive()) {
                     final Set<String> referencedParams = service.getReferencedParameterNames();
-                    final Set<String> updatedReferencedParams = referencedParams.stream().filter(updatedParameterNames::contains).collect(Collectors.toSet());
+                    final Set<String> updatedReferencedParams = referencedParams.stream().filter(extendedParameterNames::contains).collect(Collectors.toSet());
 
                     final List<ParameterDTO> affectedParameterDtos = new ArrayList<>();
                     for (final String referencedParam : referencedParams) {
@@ -1853,6 +1858,27 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
         }
 
         return updatedParameters;
+    }
+
+    private Set<String> extendWithParameterValueReferences(final Set<String> updatedParameterNames, final List<ProcessGroup> groupsReferencingParameterContext) {
+        final Set<String> extended = new HashSet<>(updatedParameterNames);
+        for (final ProcessGroup group : groupsReferencingParameterContext) {
+            final ParameterContext groupContext = group.getParameterContext();
+            if (groupContext == null) {
+                continue;
+            }
+            for (final Map.Entry<ParameterDescriptor, Parameter> entry : groupContext.getParameters().entrySet()) {
+                final String referencedName = ParameterContext.extractOneToOneParameterReference(entry.getValue().getValue());
+                if (referencedName == null || !updatedParameterNames.contains(referencedName)) {
+                    continue;
+                }
+                final Optional<Parameter> referencedParam = groupContext.getParameter(referencedName);
+                if (referencedParam.isPresent() && referencedParam.get().isProvided()) {
+                    extended.add(entry.getKey().getName());
+                }
+            }
+        }
+        return extended;
     }
 
     @Override
