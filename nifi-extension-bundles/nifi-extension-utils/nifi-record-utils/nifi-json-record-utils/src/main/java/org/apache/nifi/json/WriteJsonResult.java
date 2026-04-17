@@ -67,17 +67,24 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
     private final String mimeType;
     private final boolean prettyPrint;
     private final boolean allowScientificNotation;
+    private final boolean reuseInputSerialization;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public WriteJsonResult(final ComponentLog logger, final RecordSchema recordSchema, final SchemaAccessWriter schemaAccess, final OutputStream out, final boolean prettyPrint,
             final NullSuppression nullSuppression, final OutputGrouping outputGrouping, final String dateFormat, final String timeFormat, final String timestampFormat) throws IOException {
-        this(logger, recordSchema, schemaAccess, out, prettyPrint, nullSuppression, outputGrouping, dateFormat, timeFormat, timestampFormat, "application/json", false);
+        this(logger, recordSchema, schemaAccess, out, prettyPrint, nullSuppression, outputGrouping, dateFormat, timeFormat, timestampFormat, "application/json", false, true);
     }
 
     public WriteJsonResult(final ComponentLog logger, final RecordSchema recordSchema, final SchemaAccessWriter schemaAccess, final OutputStream out, final boolean prettyPrint,
         final NullSuppression nullSuppression, final OutputGrouping outputGrouping, final String dateFormat, final String timeFormat, final String timestampFormat,
         final String mimeType, final boolean allowScientificNotation) throws IOException {
+        this(logger, recordSchema, schemaAccess, out, prettyPrint, nullSuppression, outputGrouping, dateFormat, timeFormat, timestampFormat, mimeType, allowScientificNotation, true);
+    }
+
+    public WriteJsonResult(final ComponentLog logger, final RecordSchema recordSchema, final SchemaAccessWriter schemaAccess, final OutputStream out, final boolean prettyPrint,
+        final NullSuppression nullSuppression, final OutputGrouping outputGrouping, final String dateFormat, final String timeFormat, final String timestampFormat,
+        final String mimeType, final boolean allowScientificNotation, final boolean reuseInputSerialization) throws IOException {
 
         super(out);
         this.logger = logger;
@@ -87,6 +94,7 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
         this.outputGrouping = outputGrouping;
         this.mimeType = mimeType;
         this.allowScientificNotation = allowScientificNotation;
+        this.reuseInputSerialization = reuseInputSerialization;
 
         this.dateFormat = dateFormat;
         this.timeFormat = timeFormat;
@@ -171,6 +179,10 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
     }
 
     private boolean isUseSerializeForm(final Record record, final RecordSchema writeSchema) {
+        if (!reuseInputSerialization) {
+            return false;
+        }
+
         final Optional<SerializedForm> serializedForm = record.getSerializedForm();
         if (serializedForm.isEmpty()) {
             return false;

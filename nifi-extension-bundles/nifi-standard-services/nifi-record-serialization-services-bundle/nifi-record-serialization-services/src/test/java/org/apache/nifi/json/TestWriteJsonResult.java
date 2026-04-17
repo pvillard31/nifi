@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TestWriteJsonResult {
@@ -630,5 +631,130 @@ class TestWriteJsonResult {
 
         final String output = new String(data, StandardCharsets.UTF_8);
         assertEquals(json, output);
+    }
+
+    @Test
+    void testReuseInputSerializationDefaultTrueUsesFastPath() throws IOException {
+        final List<RecordField> fields = new ArrayList<>();
+        fields.add(new RecordField("name", RecordFieldType.STRING.getDataType()));
+        fields.add(new RecordField("age", RecordFieldType.INT.getDataType()));
+        final RecordSchema schema = new SimpleRecordSchema(fields);
+
+        final Map<String, Object> values = new HashMap<>();
+        values.put("name", "John Doe");
+        values.put("age", 42);
+
+        final String rawForm = "{\"name\":\"John Doe\",\"age\":42,\"ignoredExtra\":\"preserved\"}";
+        final SerializedForm serializedForm = SerializedForm.of(rawForm, "application/json");
+        final Record record = new MapRecord(schema, values, serializedForm);
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), baos, false,
+                NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
+                RecordFieldType.TIME.getDefaultFormat(), RecordFieldType.TIMESTAMP.getDefaultFormat())) {
+            writer.write(RecordSet.of(schema, record));
+        }
+
+        final String output = baos.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("\"ignoredExtra\":\"preserved\""),
+                "Default constructor preserves legacy fast-path behavior: raw bytes should be emitted verbatim");
+    }
+
+    @Test
+    void testReuseInputSerializationFalseForcesReserialization() throws IOException {
+        final List<RecordField> fields = new ArrayList<>();
+        fields.add(new RecordField("name", RecordFieldType.STRING.getDataType()));
+        fields.add(new RecordField("age", RecordFieldType.INT.getDataType()));
+        final RecordSchema schema = new SimpleRecordSchema(fields);
+
+        final Map<String, Object> values = new HashMap<>();
+        values.put("name", "John Doe");
+        values.put("age", 42);
+
+        final String rawForm = "{\"name\":\"John Doe\",\"age\":42,\"ignoredExtra\":\"preserved\"}";
+        final SerializedForm serializedForm = SerializedForm.of(rawForm, "application/json");
+        final Record record = new MapRecord(schema, values, serializedForm);
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), baos, false,
+                NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
+                RecordFieldType.TIME.getDefaultFormat(), RecordFieldType.TIMESTAMP.getDefaultFormat(),
+                "application/json", false, false)) {
+            writer.write(RecordSet.of(schema, record));
+        }
+
+        final String output = baos.toString(StandardCharsets.UTF_8);
+        assertFalse(output.contains("ignoredExtra"),
+                "When Reuse Input Serialization is false, the writer must re-serialize from typed values and ignore raw bytes");
+        assertEquals("[{\"name\":\"John Doe\",\"age\":42}]", output);
+    }
+
+    @Test
+    void testReuseInputSerializationFalseHonorsTimestampFormat() throws IOException {
+        final List<RecordField> fields = new ArrayList<>();
+        fields.add(new RecordField("event", RecordFieldType.TIMESTAMP.getDataType()));
+        final RecordSchema schema = new SimpleRecordSchema(fields);
+
+        final Timestamp eventTimestamp = Timestamp.valueOf("2025-03-20 17:33:11.000");
+        final Map<String, Object> values = new HashMap<>();
+        values.put("event", eventTimestamp);
+
+        final String rawForm = "{\"event\":\"2025-03-20T17:33:11.000+0000\"}";
+        final SerializedForm serializedForm = SerializedForm.of(rawForm, "application/json");
+        final Record record = new MapRecord(schema, values, serializedForm);
+
+        final ByteArrayOutputStream fastPathBaos = new ByteArrayOutputStream();
+        try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), fastPathBaos, false,
+                NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
+                RecordFieldType.TIME.getDefaultFormat(), "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                "application/json", false, true)) {
+            writer.write(RecordSet.of(schema, record));
+        }
+
+        assertTrue(fastPathBaos.toString(StandardCharsets.UTF_8).contains("+0000"),
+                "With Reuse Input Serialization enabled, raw '+0000' form is passed through even though Timestamp Format would normalize to 'Z'");
+
+        final ByteArrayOutputStream slowPathBaos = new ByteArrayOutputStream();
+        try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), slowPathBaos, false,
+                NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
+                RecordFieldType.TIME.getDefaultFormat(), "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                "application/json", false, false)) {
+            writer.write(RecordSet.of(schema, record));
+        }
+
+        final String slowPathOutput = slowPathBaos.toString(StandardCharsets.UTF_8);
+        assertFalse(slowPathOutput.contains("+0000"),
+                "With Reuse Input Serialization disabled, writer's Timestamp Format must be applied even when SerializedForm is present");
+        assertTrue(slowPathOutput.contains("\"event\":\"2025-03-20T17:33:11.000"),
+                "Re-serialized timestamp should reflect the configured format");
+    }
+
+    @Test
+    void testReuseInputSerializationFalseHonorsSuppressNulls() throws IOException {
+        final List<RecordField> fields = new ArrayList<>();
+        fields.add(new RecordField("name", RecordFieldType.STRING.getDataType()));
+        fields.add(new RecordField("middleName", RecordFieldType.STRING.getDataType()));
+        final RecordSchema schema = new SimpleRecordSchema(fields);
+
+        final Map<String, Object> values = new HashMap<>();
+        values.put("name", "John Doe");
+        values.put("middleName", null);
+
+        final String rawForm = "{\"name\":\"John Doe\",\"middleName\":null}";
+        final SerializedForm serializedForm = SerializedForm.of(rawForm, "application/json");
+        final Record record = new MapRecord(schema, values, serializedForm);
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), baos, false,
+                NullSuppression.ALWAYS_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
+                RecordFieldType.TIME.getDefaultFormat(), RecordFieldType.TIMESTAMP.getDefaultFormat(),
+                "application/json", false, false)) {
+            writer.write(RecordSet.of(schema, record));
+        }
+
+        final String output = baos.toString(StandardCharsets.UTF_8);
+        assertFalse(output.contains("middleName"),
+                "Suppress Null Values must be honored when Reuse Input Serialization is false, even though the input JSON contained the null field");
+        assertEquals("[{\"name\":\"John Doe\"}]", output);
     }
 }

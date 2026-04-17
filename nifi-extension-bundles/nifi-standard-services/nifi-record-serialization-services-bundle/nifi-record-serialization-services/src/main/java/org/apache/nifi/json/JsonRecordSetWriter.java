@@ -123,6 +123,20 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
             .allowableValues("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
             .dependsOn(COMPRESSION_FORMAT, COMPRESSION_FORMAT_GZIP)
             .build();
+    public static final PropertyDescriptor REUSE_INPUT_SERIALIZATION = new PropertyDescriptor.Builder()
+            .name("Reuse Input Serialization")
+            .description("""
+                    Controls a throughput optimization that only applies to pure JSON pass-through flows. When set to true, and all of the \
+                    following conditions are met, the writer will emit the record's original JSON bytes verbatim instead of re-serializing from typed field \
+                    values: (1) the upstream reader is JsonTreeReader, (2) no data change, (3) the reader's and writer's record schemas are identical, \
+                    (4) the writer is not using compression, and (5) the Pretty Print JSON and Allow Scientific Notation settings are compatible with the \
+                    cached bytes. When the optimization kicks in, the Timestamp Format, Date Format, Time Format, and Suppress Null Values properties \
+                    have no effect on those records. Set this to false to have those properties honored uniformly for every record.""")
+            .expressionLanguageSupported(ExpressionLanguageScope.NONE)
+            .allowableValues("true", "false")
+            .defaultValue("true")
+            .required(true)
+            .build();
 
     private volatile boolean prettyPrint;
     private volatile boolean allowScientificNotation;
@@ -130,6 +144,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
     private volatile OutputGrouping outputGrouping;
     private volatile String compressionFormat;
     private volatile int compressionLevel;
+    private volatile boolean reuseInputSerialization;
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
@@ -140,6 +155,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
         properties.add(OUTPUT_GROUPING);
         properties.add(COMPRESSION_FORMAT);
         properties.add(COMPRESSION_LEVEL);
+        properties.add(REUSE_INPUT_SERIALIZATION);
         return properties;
     }
 
@@ -197,6 +213,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
 
         this.compressionFormat = context.getProperty(COMPRESSION_FORMAT).getValue();
         this.compressionLevel = context.getProperty(COMPRESSION_LEVEL).asInteger();
+        this.reuseInputSerialization = context.getProperty(REUSE_INPUT_SERIALIZATION).asBoolean();
     }
 
     @Override
@@ -241,7 +258,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
         }
 
         return new WriteJsonResult(logger, schema, getSchemaAccessWriter(schema, variables), compressionOut, prettyPrint, nullSuppression, outputGrouping,
-                getDateFormat().orElse(null), getTimeFormat().orElse(null), getTimestampFormat().orElse(null), mimeType, allowScientificNotation);
+                getDateFormat().orElse(null), getTimeFormat().orElse(null), getTimestampFormat().orElse(null), mimeType, allowScientificNotation, reuseInputSerialization);
     }
 
 }
