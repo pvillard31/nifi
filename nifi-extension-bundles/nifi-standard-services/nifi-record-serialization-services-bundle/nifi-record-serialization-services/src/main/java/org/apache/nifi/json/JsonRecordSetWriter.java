@@ -124,14 +124,11 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
             .dependsOn(COMPRESSION_FORMAT, COMPRESSION_FORMAT_GZIP)
             .build();
     public static final PropertyDescriptor REUSE_INPUT_SERIALIZATION = new PropertyDescriptor.Builder()
-            .name("Reuse Input Serialization")
+            .name("Use Input Serialization")
             .description("""
-                    Controls a throughput optimization that only applies to pure JSON pass-through flows. When set to true, and all of the \
-                    following conditions are met, the writer will emit the record's original JSON bytes verbatim instead of re-serializing from typed field \
-                    values: (1) the upstream reader is JsonTreeReader, (2) no data change, (3) the reader's and writer's record schemas are identical, \
-                    (4) the writer is not using compression, and (5) the Pretty Print JSON and Allow Scientific Notation settings are compatible with the \
-                    cached bytes. When the optimization kicks in, the Timestamp Format, Date Format, Time Format, and Suppress Null Values properties \
-                    have no effect on those records. Set this to false to have those properties honored uniformly for every record.""")
+                    When set to true (default), the writer may emit the upstream reader's original JSON bytes verbatim when it can do so safely, as a \
+                    throughput optimization. In that case, the Timestamp Format, Date Format, Time Format, and Suppress Null Values properties may not be \
+                    applied to those records. Set this to false to force re-serialization so that these properties are honored uniformly for every record.""")
             .expressionLanguageSupported(ExpressionLanguageScope.NONE)
             .allowableValues("true", "false")
             .defaultValue("true")

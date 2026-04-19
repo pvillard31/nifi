@@ -656,8 +656,7 @@ class TestWriteJsonResult {
         }
 
         final String output = baos.toString(StandardCharsets.UTF_8);
-        assertTrue(output.contains("\"ignoredExtra\":\"preserved\""),
-                "Default constructor preserves legacy fast-path behavior: raw bytes should be emitted verbatim");
+        assertEquals("[{\"name\":\"John Doe\",\"age\":42,\"ignoredExtra\":\"preserved\"}]", output);
     }
 
     @Test
@@ -685,7 +684,7 @@ class TestWriteJsonResult {
 
         final String output = baos.toString(StandardCharsets.UTF_8);
         assertFalse(output.contains("ignoredExtra"),
-                "When Reuse Input Serialization is false, the writer must re-serialize from typed values and ignore raw bytes");
+                "When Use Input Serialization is false, the writer must re-serialize from typed values and ignore raw bytes");
         assertEquals("[{\"name\":\"John Doe\",\"age\":42}]", output);
     }
 
@@ -699,32 +698,34 @@ class TestWriteJsonResult {
         final Map<String, Object> values = new HashMap<>();
         values.put("event", eventTimestamp);
 
-        final String rawForm = "{\"event\":\"2025-03-20T17:33:11.000+0000\"}";
+        final String timestampValue = "2025-03-20T17:33:11.000+0000";
+        final String timestampFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSX";
+        final String rawForm = "{\"event\":\"%s\"}".formatted(timestampValue);
         final SerializedForm serializedForm = SerializedForm.of(rawForm, "application/json");
         final Record record = new MapRecord(schema, values, serializedForm);
 
         final ByteArrayOutputStream fastPathBaos = new ByteArrayOutputStream();
         try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), fastPathBaos, false,
                 NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
-                RecordFieldType.TIME.getDefaultFormat(), "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                RecordFieldType.TIME.getDefaultFormat(), timestampFormat,
                 "application/json", false, true)) {
             writer.write(RecordSet.of(schema, record));
         }
 
-        assertTrue(fastPathBaos.toString(StandardCharsets.UTF_8).contains("+0000"),
-                "With Reuse Input Serialization enabled, raw '+0000' form is passed through even though Timestamp Format would normalize to 'Z'");
+        assertTrue(fastPathBaos.toString(StandardCharsets.UTF_8).contains(timestampValue),
+                "With Use Input Serialization enabled, raw '+0000' form is passed through even though Timestamp Format would normalize to 'Z'");
 
         final ByteArrayOutputStream slowPathBaos = new ByteArrayOutputStream();
         try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), slowPathBaos, false,
                 NullSuppression.NEVER_SUPPRESS, OutputGrouping.OUTPUT_ARRAY, RecordFieldType.DATE.getDefaultFormat(),
-                RecordFieldType.TIME.getDefaultFormat(), "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                RecordFieldType.TIME.getDefaultFormat(), timestampFormat,
                 "application/json", false, false)) {
             writer.write(RecordSet.of(schema, record));
         }
 
         final String slowPathOutput = slowPathBaos.toString(StandardCharsets.UTF_8);
         assertFalse(slowPathOutput.contains("+0000"),
-                "With Reuse Input Serialization disabled, writer's Timestamp Format must be applied even when SerializedForm is present");
+                "With Use Input Serialization disabled, writer's Timestamp Format must be applied even when SerializedForm is present");
         assertTrue(slowPathOutput.contains("\"event\":\"2025-03-20T17:33:11.000"),
                 "Re-serialized timestamp should reflect the configured format");
     }
@@ -754,7 +755,7 @@ class TestWriteJsonResult {
 
         final String output = baos.toString(StandardCharsets.UTF_8);
         assertFalse(output.contains("middleName"),
-                "Suppress Null Values must be honored when Reuse Input Serialization is false, even though the input JSON contained the null field");
+                "Suppress Null Values must be honored when Use Input Serialization is false, even though the input JSON contained the null field");
         assertEquals("[{\"name\":\"John Doe\"}]", output);
     }
 }
