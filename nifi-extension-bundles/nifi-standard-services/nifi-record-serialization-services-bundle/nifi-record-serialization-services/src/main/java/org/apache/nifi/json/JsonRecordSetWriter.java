@@ -150,7 +150,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
     private volatile OutputGrouping outputGrouping;
     private volatile String compressionFormat;
     private volatile int compressionLevel;
-    private volatile boolean reuseInputSerialization;
+    private volatile boolean serializedInputHandlingEnabled;
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
@@ -219,7 +219,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
 
         this.compressionFormat = context.getProperty(COMPRESSION_FORMAT).getValue();
         this.compressionLevel = context.getProperty(COMPRESSION_LEVEL).asInteger();
-        this.reuseInputSerialization = HANDLING_ENABLED.getValue().equals(context.getProperty(SERIALIZED_JSON_INPUT_HANDLING).getValue());
+        this.serializedInputHandlingEnabled = HANDLING_ENABLED.getValue().equals(context.getProperty(SERIALIZED_JSON_INPUT_HANDLING).getValue());
     }
 
     @Override
@@ -264,7 +264,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
         }
 
         return new WriteJsonResult(logger, schema, getSchemaAccessWriter(schema, variables), compressionOut, prettyPrint, nullSuppression, outputGrouping,
-                getDateFormat().orElse(null), getTimeFormat().orElse(null), getTimestampFormat().orElse(null), mimeType, allowScientificNotation, reuseInputSerialization);
+                getDateFormat().orElse(null), getTimeFormat().orElse(null), getTimestampFormat().orElse(null), mimeType, allowScientificNotation, serializedInputHandlingEnabled);
     }
 
 }

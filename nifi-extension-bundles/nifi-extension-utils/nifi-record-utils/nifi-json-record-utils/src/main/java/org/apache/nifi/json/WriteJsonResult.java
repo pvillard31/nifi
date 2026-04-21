@@ -67,7 +67,7 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
     private final String mimeType;
     private final boolean prettyPrint;
     private final boolean allowScientificNotation;
-    private final boolean reuseInputSerialization;
+    private final boolean serializedInputHandlingEnabled;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -84,7 +84,7 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
 
     public WriteJsonResult(final ComponentLog logger, final RecordSchema recordSchema, final SchemaAccessWriter schemaAccess, final OutputStream out, final boolean prettyPrint,
         final NullSuppression nullSuppression, final OutputGrouping outputGrouping, final String dateFormat, final String timeFormat, final String timestampFormat,
-        final String mimeType, final boolean allowScientificNotation, final boolean reuseInputSerialization) throws IOException {
+        final String mimeType, final boolean allowScientificNotation, final boolean serializedInputHandlingEnabled) throws IOException {
 
         super(out);
         this.logger = logger;
@@ -94,7 +94,7 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
         this.outputGrouping = outputGrouping;
         this.mimeType = mimeType;
         this.allowScientificNotation = allowScientificNotation;
-        this.reuseInputSerialization = reuseInputSerialization;
+        this.serializedInputHandlingEnabled = serializedInputHandlingEnabled;
 
         this.dateFormat = dateFormat;
         this.timeFormat = timeFormat;
@@ -182,7 +182,7 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
      * Determines whether the record's original serialized JSON bytes can be emitted verbatim as a throughput optimization,
      * bypassing field-by-field re-serialization. All of the following conditions must hold for the fast path to apply:
      * <ol>
-     *   <li>The caller enabled the optimization (the {@code reuseInputSerialization} constructor argument is {@code true}).</li>
+     *   <li>The caller enabled the optimization (the {@code serializedInputHandlingEnabled} constructor argument is {@code true}).</li>
      *   <li>The record carries a {@link SerializedForm} produced by the upstream reader. Today this is only set by
      *       {@code JsonTreeRowRecordReader}; readers such as {@code JsonPathRowRecordReader} that transform the input
      *       cannot reuse their input bytes and therefore never trigger the fast path.</li>
@@ -195,10 +195,10 @@ public class WriteJsonResult extends AbstractRecordSetWriter implements RecordSe
      * When the fast path is taken, the writer emits the cached bytes via {@link JsonGenerator#writeRawValue(String)} and
      * therefore does <em>not</em> apply the writer's Timestamp Format, Date Format, Time Format, or Suppress Null Values
      * settings to that record. Operators that need those writer-side properties to be honored uniformly must construct
-     * this writer with {@code reuseInputSerialization = false}.
+     * this writer with {@code serializedInputHandlingEnabled = false}.
      */
     private boolean isUseSerializeForm(final Record record, final RecordSchema writeSchema) {
-        if (!reuseInputSerialization) {
+        if (!serializedInputHandlingEnabled) {
             return false;
         }
 
