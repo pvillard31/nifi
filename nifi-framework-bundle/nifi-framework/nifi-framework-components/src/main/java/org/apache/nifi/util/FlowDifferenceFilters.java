@@ -997,7 +997,7 @@ public class FlowDifferenceFilters {
             componentNode = null;
         }
 
-        if (!isNotDynamicProperty(fieldName.get(), componentNode)) {
+        if (isDynamicProperty(fieldName.get(), componentNode)) {
             return false;
         }
 
@@ -1009,12 +1009,12 @@ public class FlowDifferenceFilters {
         return Objects.equals(difference.getValueB(), descriptor.getDefaultValue());
     }
 
-    private static boolean isNotDynamicProperty(final String propertyName, final ComponentNode componentNode) {
+    private static boolean isDynamicProperty(final String propertyName, final ComponentNode componentNode) {
         final ConfigurableComponent component = componentNode == null ? null : componentNode.getComponent();
         final List<PropertyDescriptor> descriptors = component == null ? List.of() : component.getPropertyDescriptors();
         return descriptors.stream()
                 .map(PropertyDescriptor::getName)
-                .anyMatch(propertyName::equals);
+                .noneMatch(propertyName::equals);
     }
 
     private static Optional<String> getComponentInstanceIdentifier(final FlowDifference difference) {
