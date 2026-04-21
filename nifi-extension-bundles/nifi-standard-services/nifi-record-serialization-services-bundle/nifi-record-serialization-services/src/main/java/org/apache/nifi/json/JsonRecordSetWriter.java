@@ -67,6 +67,15 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
     public static final AllowableValue OUTPUT_ONELINE = new AllowableValue("output-oneline", "One Line Per Object",
             "Output records with one JSON object per line, delimited by a newline character");
 
+    public static final AllowableValue HANDLING_ENABLED = new AllowableValue("ENABLED", "Enabled",
+            """
+                    The writer may emit the input reader's original JSON bytes verbatim when it can do so safely, as a throughput optimization. \
+                    Timestamp Format, Date Format, Time Format, and Suppress Null Values may not be applied to those records.""");
+    public static final AllowableValue HANDLING_DISABLED = new AllowableValue("DISABLED", "Disabled",
+            """
+                    The writer re-serializes every record from typed field values, so Timestamp Format, Date Format, Time Format, and Suppress Null \
+                    Values are honored uniformly.""");
+
     public static final String COMPRESSION_FORMAT_GZIP = "gzip";
     public static final String COMPRESSION_FORMAT_BZIP2 = "bzip2";
     public static final String COMPRESSION_FORMAT_XZ_LZMA2 = "xz-lzma2";
@@ -123,15 +132,15 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
             .allowableValues("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
             .dependsOn(COMPRESSION_FORMAT, COMPRESSION_FORMAT_GZIP)
             .build();
-    public static final PropertyDescriptor REUSE_INPUT_SERIALIZATION = new PropertyDescriptor.Builder()
-            .name("Use Input Serialization")
+    public static final PropertyDescriptor SERIALIZED_JSON_INPUT_HANDLING = new PropertyDescriptor.Builder()
+            .name("Serialized JSON Input Handling")
             .description("""
-                    When set to true (default), the writer may emit the upstream reader's original JSON bytes verbatim when it can do so safely, as a \
+                    When enabled, the writer may emit the input reader's original JSON bytes verbatim when it can do so safely, as a \
                     throughput optimization. In that case, the Timestamp Format, Date Format, Time Format, and Suppress Null Values properties may not be \
-                    applied to those records. Set this to false to force re-serialization so that these properties are honored uniformly for every record.""")
+                    applied to those records. When disabled, the writer re-serializes every record so that these properties are honored uniformly.""")
             .expressionLanguageSupported(ExpressionLanguageScope.NONE)
-            .allowableValues("true", "false")
-            .defaultValue("true")
+            .allowableValues(HANDLING_ENABLED, HANDLING_DISABLED)
+            .defaultValue(HANDLING_ENABLED.getValue())
             .required(true)
             .build();
 
@@ -152,7 +161,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
         properties.add(OUTPUT_GROUPING);
         properties.add(COMPRESSION_FORMAT);
         properties.add(COMPRESSION_LEVEL);
-        properties.add(REUSE_INPUT_SERIALIZATION);
+        properties.add(SERIALIZED_JSON_INPUT_HANDLING);
         return properties;
     }
 
@@ -210,7 +219,7 @@ public class JsonRecordSetWriter extends DateTimeTextRecordSetWriter implements 
 
         this.compressionFormat = context.getProperty(COMPRESSION_FORMAT).getValue();
         this.compressionLevel = context.getProperty(COMPRESSION_LEVEL).asInteger();
-        this.reuseInputSerialization = context.getProperty(REUSE_INPUT_SERIALIZATION).asBoolean();
+        this.reuseInputSerialization = HANDLING_ENABLED.getValue().equals(context.getProperty(SERIALIZED_JSON_INPUT_HANDLING).getValue());
     }
 
     @Override

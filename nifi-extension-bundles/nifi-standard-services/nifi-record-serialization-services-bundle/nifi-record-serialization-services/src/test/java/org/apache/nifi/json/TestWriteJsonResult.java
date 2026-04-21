@@ -684,7 +684,7 @@ class TestWriteJsonResult {
 
         final String output = baos.toString(StandardCharsets.UTF_8);
         assertFalse(output.contains("ignoredExtra"),
-                "When Use Input Serialization is false, the writer must re-serialize from typed values and ignore raw bytes");
+                "When Serialized JSON Input Handling is DISABLED, the writer must re-serialize from typed values and ignore raw bytes");
         assertEquals("[{\"name\":\"John Doe\",\"age\":42}]", output);
     }
 
@@ -713,7 +713,7 @@ class TestWriteJsonResult {
         }
 
         assertTrue(fastPathBaos.toString(StandardCharsets.UTF_8).contains(timestampValue),
-                "With Use Input Serialization enabled, raw '+0000' form is passed through even though Timestamp Format would normalize to 'Z'");
+                "With Serialized JSON Input Handling ENABLED, raw '+0000' form is passed through even though Timestamp Format would normalize to 'Z'");
 
         final ByteArrayOutputStream slowPathBaos = new ByteArrayOutputStream();
         try (final WriteJsonResult writer = new WriteJsonResult(Mockito.mock(ComponentLog.class), schema, new SchemaNameAsAttribute(), slowPathBaos, false,
@@ -725,7 +725,7 @@ class TestWriteJsonResult {
 
         final String slowPathOutput = slowPathBaos.toString(StandardCharsets.UTF_8);
         assertFalse(slowPathOutput.contains("+0000"),
-                "With Use Input Serialization disabled, writer's Timestamp Format must be applied even when SerializedForm is present");
+                "With Serialized JSON Input Handling DISABLED, writer's Timestamp Format must be applied even when SerializedForm is present");
         assertTrue(slowPathOutput.contains("\"event\":\"2025-03-20T17:33:11.000"),
                 "Re-serialized timestamp should reflect the configured format");
     }
@@ -755,7 +755,7 @@ class TestWriteJsonResult {
 
         final String output = baos.toString(StandardCharsets.UTF_8);
         assertFalse(output.contains("middleName"),
-                "Suppress Null Values must be honored when Use Input Serialization is false, even though the input JSON contained the null field");
+                "Suppress Null Values must be honored when Serialized JSON Input Handling is DISABLED, even though the input JSON contained the null field");
         assertEquals("[{\"name\":\"John Doe\"}]", output);
     }
 }
