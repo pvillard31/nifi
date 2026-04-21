@@ -943,26 +943,31 @@ public class FlowDifferenceFilters {
 
     /**
      * Determines whether a PROPERTY_ADDED difference is an environmental change because the added property is a
-     * non-dynamic property defined in the component code that did not exist in the versioned snapshot. Non-dynamic
-     * properties are declared through {@link ConfigurableComponent#getPropertyDescriptors()} and cannot be added by
-     * users. When a PROPERTY_ADDED diff exists for such a property and the snapshot did not already define it, it
-     * means the component's code was updated (e.g., via NiFi upgrade or bundle version change) and migration added
-     * the property. This is an environmental change regardless of whether a corresponding BUNDLE_CHANGED diff is
-     * present, because the VCI baseline may already have resolved bundles (e.g., after
-     * {@code discoverCompatibleBundles} during import).
+     * non-dynamic property defined in the component code that did not exist in the versioned snapshot and whose
+     * current value still matches the descriptor's default. Non-dynamic properties are declared through
+     * {@link ConfigurableComponent#getPropertyDescriptors()} and cannot be added by users. When a PROPERTY_ADDED diff
+     * exists for such a property and the snapshot did not already define it, it means the component's code was updated
+     * (e.g., via NiFi upgrade or bundle version change) and migration or default-value application introduced the
+     * property. This is an environmental change regardless of whether a corresponding BUNDLE_CHANGED diff is present,
+     * because the VCI baseline may already have resolved bundles (e.g., after {@code discoverCompatibleBundles} during
+     * import).
      *
      * <p>If the snapshot (component A) already contains a property descriptor for the property in question, the
      * property was part of the component definition when the flow was committed and the user has intentionally set
      * a value. In that case, this method returns {@code false} so the change is treated as a local modification.</p>
      *
+     * <p>If the added value differs from the descriptor's default, the change is treated as a user modification and
+     * this method returns {@code false}. This ensures that user edits to migration-introduced properties are surfaced
+     * as local changes rather than being silently absorbed into the environmental view.</p>
+     *
      * <p>Only Processors and Controller Services are considered because these are the component types that carry
      * properties within versioned process groups.</p>
      *
-     * <p>Trade-off: if a user subsequently edits a migration-added property, that edit will also be classified as
-     * environmental because the diff relative to the registry is still PROPERTY_ADDED (the registry version predates
-     * the migration). This means such edits will not make the flow dirty. However, the change remains visible in the
-     * "Show Local Changes" environmental view, and when the user commits for any other reason, the full flow
-     * (including the edited property) is saved to the registry.</p>
+     * <p>Trade-off: if a component's {@code migrateProperties} implementation sets a newly-introduced static property
+     * to a value that differs from the descriptor's default, that change will now be classified as a local
+     * modification rather than environmental. The affected user can re-baseline by committing the flow once after the
+     * NAR upgrade. This is preferable to the previous behavior, which silently swallowed user edits to
+     * migration-added properties.</p>
      */
     private static boolean isPropertyAddedFromMigration(final FlowDifference difference, final FlowManager flowManager) {
         if (difference.getDifferenceType() != DifferenceType.PROPERTY_ADDED) {
@@ -992,7 +997,16 @@ public class FlowDifferenceFilters {
             componentNode = null;
         }
 
-        return isNotDynamicProperty(fieldName.get(), componentNode);
+        if (!isNotDynamicProperty(fieldName.get(), componentNode)) {
+            return false;
+        }
+
+        final PropertyDescriptor descriptor = componentNode == null ? null : componentNode.getPropertyDescriptor(fieldName.get());
+        if (descriptor == null) {
+            return true;
+        }
+
+        return Objects.equals(difference.getValueB(), descriptor.getDefaultValue());
     }
 
     private static boolean isNotDynamicProperty(final String propertyName, final ComponentNode componentNode) {
