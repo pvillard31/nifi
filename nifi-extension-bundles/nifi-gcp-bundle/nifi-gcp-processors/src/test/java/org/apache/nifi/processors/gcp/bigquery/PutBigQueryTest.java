@@ -48,6 +48,8 @@ import org.apache.nifi.processors.gcp.credentials.service.GCPCredentialsControll
 import org.apache.nifi.proxy.ProxyConfiguration;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.schema.access.SchemaAccessUtils;
+import org.apache.nifi.util.LogMessage;
+import org.apache.nifi.util.MockComponentLog;
 import org.apache.nifi.util.PropertyMigrationResult;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
@@ -80,6 +82,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -365,6 +368,71 @@ public class PutBigQueryTest {
         assertFalse(rows.getSerializedRowsList().getFirst().toString().contains(unknownProperty));
 
         runner.assertAllFlowFilesTransferred(PutBigQuery.REL_SUCCESS);
+    }
+
+    @Test
+    void testUnmatchedFieldWarnLogsAndWrites() {
+        when(writeClient.createWriteStream(isA(CreateWriteStreamRequest.class))).thenReturn(writeStream);
+        final TableSchema myTableSchema = mockTableSchema(FIELD_1_NAME, TableFieldSchema.Type.STRING, FIELD_2_NAME, TableFieldSchema.Type.STRING);
+        when(writeStream.getTableSchema()).thenReturn(myTableSchema);
+        when(streamWriter.append(isA(ProtoRows.class), isA(Long.class)))
+            .thenReturn(ApiFutures.immediateFuture(AppendRowsResponse.newBuilder().setAppendResult(mock(AppendRowsResponse.AppendResult.class)).build()));
+
+        runner.setProperty(PutBigQuery.UNMATCHED_FIELD_BEHAVIOR, UnmatchedFieldBehavior.WARN);
+
+        final String unknownProperty = "myUnknownProperty";
+        runner.enqueue(CSV_HEADER + ",unknownField\nmyId,myValue," + unknownProperty);
+        runner.run();
+
+        verify(streamWriter).append(protoRowsCaptor.capture(), offsetCaptor.capture());
+        final ProtoRows rows = protoRowsCaptor.getValue();
+        assertEquals(1, rows.getSerializedRowsCount());
+        assertFalse(rows.getSerializedRowsList().getFirst().toString().contains(unknownProperty));
+
+        runner.assertAllFlowFilesTransferred(PutBigQuery.REL_SUCCESS);
+        assertUnmatchedFieldWarningLogged(runner);
+    }
+
+    @Test
+    void testUnmatchedFieldFailRoutesToFailure() {
+        when(writeClient.createWriteStream(isA(CreateWriteStreamRequest.class))).thenReturn(writeStream);
+        final TableSchema myTableSchema = mockTableSchema(FIELD_1_NAME, TableFieldSchema.Type.STRING, FIELD_2_NAME, TableFieldSchema.Type.STRING);
+        when(writeStream.getTableSchema()).thenReturn(myTableSchema);
+
+        runner.setProperty(PutBigQuery.UNMATCHED_FIELD_BEHAVIOR, UnmatchedFieldBehavior.FAIL);
+        runner.setProperty(PutBigQuery.SKIP_INVALID_ROWS, "false");
+
+        runner.enqueue(CSV_HEADER + ",unknownField\nmyId,myValue,extra");
+        runner.run();
+
+        verify(streamWriter, never()).append(any(ProtoRows.class), anyLong());
+        runner.assertAllFlowFilesTransferred(PutBigQuery.REL_FAILURE);
+    }
+
+    @Test
+    void testUnmatchedFieldFailWithSkipInvalidRowsDropsRecord() {
+        when(writeClient.createWriteStream(isA(CreateWriteStreamRequest.class))).thenReturn(writeStream);
+        final TableSchema myTableSchema = mockTableSchema(FIELD_1_NAME, TableFieldSchema.Type.STRING, FIELD_2_NAME, TableFieldSchema.Type.STRING);
+        when(writeStream.getTableSchema()).thenReturn(myTableSchema);
+
+        runner.setProperty(PutBigQuery.UNMATCHED_FIELD_BEHAVIOR, UnmatchedFieldBehavior.FAIL);
+        runner.setProperty(PutBigQuery.SKIP_INVALID_ROWS, "true");
+
+        runner.enqueue(CSV_HEADER + ",unknownField\nidOne,valueOne,extra");
+        runner.run();
+
+        verify(streamWriter, never()).append(any(ProtoRows.class), anyLong());
+        runner.assertAllFlowFilesTransferred(PutBigQuery.REL_SUCCESS);
+        runner.getFlowFilesForRelationship(PutBigQuery.REL_SUCCESS).getFirst()
+                .assertAttributeEquals(PutBigQuery.JOB_NB_RECORDS_ATTR, "0");
+    }
+
+    private static void assertUnmatchedFieldWarningLogged(final TestRunner runner) {
+        final MockComponentLog logger = runner.getLogger();
+        final boolean found = logger.getWarnMessages().stream()
+                .map(LogMessage::getMsg)
+                .anyMatch(msg -> msg != null && msg.contains("not present in BigQuery table schema"));
+        assertTrue(found, "Expected a warning about unmatched fields, got: " + logger.getWarnMessages());
     }
 
     @Test

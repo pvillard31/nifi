@@ -172,6 +172,16 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         .defaultValue("false")
         .build();
 
+    public static final PropertyDescriptor UNMATCHED_FIELD_BEHAVIOR = new PropertyDescriptor.Builder()
+        .name("Unmatched Field Behavior")
+        .description("""
+                If an incoming record has a field that does not map to any of the BigQuery table's columns, this property specifies how to handle the situation. \
+                Unmatched fields are otherwise silently dropped before the request is sent to BigQuery, which can hide schema drift in upstream sources.""")
+        .required(true)
+        .allowableValues(UnmatchedFieldBehavior.class)
+        .defaultValue(UnmatchedFieldBehavior.IGNORE)
+        .build();
+
     private static final List<PropertyDescriptor> DESCRIPTORS = List.of(
         GCP_CREDENTIALS_PROVIDER_SERVICE,
         PROJECT_ID,
@@ -183,6 +193,7 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         APPEND_RECORD_COUNT,
         RETRY_COUNT,
         SKIP_INVALID_ROWS,
+        UNMATCHED_FIELD_BEHAVIOR,
         PROXY_CONFIGURATION_SERVICE
     );
 
@@ -235,13 +246,14 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         }
 
         final boolean skipInvalidRows = context.getProperty(SKIP_INVALID_ROWS).evaluateAttributeExpressions(flowFile).asBoolean();
+        final UnmatchedFieldBehavior unmatchedFieldBehavior = context.getProperty(UNMATCHED_FIELD_BEHAVIOR).asAllowableValue(UnmatchedFieldBehavior.class);
         final RecordReaderFactory readerFactory = context.getProperty(RECORD_READER).asControllerService(RecordReaderFactory.class);
 
         int recordNumWritten;
         try {
             try (InputStream in = session.read(flowFile);
                     RecordReader reader = readerFactory.createRecordReader(flowFile, in, getLogger())) {
-                recordNumWritten = writeRecordsToStream(reader, protoDescriptor, skipInvalidRows, tableSchema);
+                recordNumWritten = writeRecordsToStream(reader, protoDescriptor, skipInvalidRows, tableSchema, unmatchedFieldBehavior, tableName);
             }
             flowFile = session.putAttribute(flowFile, JOB_NB_RECORDS_ATTR, Integer.toString(recordNumWritten));
         } catch (Exception e) {
@@ -261,13 +273,14 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         config.renameProperty("bq.skip.invalid.rows", SKIP_INVALID_ROWS.getName());
     }
 
-    private int writeRecordsToStream(RecordReader reader, Descriptors.Descriptor descriptor, boolean skipInvalidRows, TableSchema tableSchema) throws Exception {
+    private int writeRecordsToStream(final RecordReader reader, final Descriptors.Descriptor descriptor, final boolean skipInvalidRows, final TableSchema tableSchema,
+                                     final UnmatchedFieldBehavior unmatchedFieldBehavior, final TableName tableName) throws Exception {
         Record currentRecord;
         int offset = 0;
         int recordNum = 0;
         ProtoRows.Builder rowsBuilder = ProtoRows.newBuilder();
         while ((currentRecord = reader.nextRecord()) != null) {
-            DynamicMessage message = recordToProtoMessage(currentRecord, descriptor, skipInvalidRows, tableSchema);
+            final DynamicMessage message = recordToProtoMessage(currentRecord, descriptor, skipInvalidRows, tableSchema, unmatchedFieldBehavior, tableName);
 
             if (message == null) {
                 continue;
@@ -289,12 +302,35 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         return recordNum;
     }
 
-    private DynamicMessage recordToProtoMessage(Record record, Descriptors.Descriptor descriptor, boolean skipInvalidRows, TableSchema tableSchema) {
-        Map<String, Object> valueMap = convertMapRecord(record.toMap(), tableSchema.getFieldsList());
+    private DynamicMessage recordToProtoMessage(final Record record, final Descriptors.Descriptor descriptor, final boolean skipInvalidRows, final TableSchema tableSchema,
+                                                final UnmatchedFieldBehavior unmatchedFieldBehavior, final TableName tableName) {
+        final Map<String, Object> rawMap = record.toMap();
+
+        if (unmatchedFieldBehavior != UnmatchedFieldBehavior.IGNORE) {
+            final List<String> unmatchedFields = new ArrayList<>();
+            collectUnmatchedFields(rawMap, tableSchema.getFieldsList(), null, unmatchedFields);
+
+            if (!unmatchedFields.isEmpty()) {
+                if (unmatchedFieldBehavior == UnmatchedFieldBehavior.WARN) {
+                    getLogger().warn("Record contains {} field(s) not present in BigQuery table schema for table {}: {}",
+                            unmatchedFields.size(), tableName, unmatchedFields);
+                } else {
+                    if (skipInvalidRows) {
+                        getLogger().warn("Skipping record containing {} field(s) not present in BigQuery table schema for table {}: {}",
+                                unmatchedFields.size(), tableName, unmatchedFields);
+                        return null;
+                    }
+                    throw new ProcessException("Record contains fields not present in BigQuery table schema for table %s: %s"
+                            .formatted(tableName, unmatchedFields));
+                }
+            }
+        }
+
+        final Map<String, Object> valueMap = convertMapRecord(rawMap, tableSchema.getFieldsList());
         DynamicMessage message = null;
         try {
             message = ProtoUtils.createMessage(descriptor, valueMap, tableSchema);
-        } catch (RuntimeException e) {
+        } catch (final RuntimeException e) {
             getLogger().error("Cannot convert record to message", e);
             if (!skipInvalidRows) {
                 throw e;
@@ -302,6 +338,33 @@ public class PutBigQuery extends AbstractBigQueryProcessor {
         }
 
         return message;
+    }
+
+    private static void collectUnmatchedFields(final Map<String, Object> recordMap, final List<TableFieldSchema> tableFields,
+                                               final String parentPath, final List<String> unmatchedFields) {
+        for (final Map.Entry<String, Object> entry : recordMap.entrySet()) {
+            final String key = entry.getKey();
+            final Object value = entry.getValue();
+            final String fieldPath = parentPath == null ? key : parentPath + "." + key;
+            final TableFieldSchema fieldSchema = findFieldSchema(tableFields, key);
+
+            if (fieldSchema == null) {
+                unmatchedFields.add(fieldPath);
+                continue;
+            }
+
+            if (fieldSchema.getType() == TableFieldSchema.Type.STRUCT) {
+                if (value instanceof MapRecord mapRecord) {
+                    collectUnmatchedFields(mapRecord.toMap(), fieldSchema.getFieldsList(), fieldPath, unmatchedFields);
+                } else if (value instanceof Object[] arrayValue) {
+                    for (final Object item : arrayValue) {
+                        if (item instanceof MapRecord mapRecordItem) {
+                            collectUnmatchedFields(mapRecordItem.toMap(), fieldSchema.getFieldsList(), fieldPath, unmatchedFields);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private void append(AppendContext appendContext) throws Exception {
