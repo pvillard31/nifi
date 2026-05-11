@@ -33,6 +33,7 @@ import org.apache.nifi.parameter.Parameter;
 import org.apache.nifi.parameter.ParameterContext;
 import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.parameter.ParameterProviderConfiguration;
+import org.apache.nifi.parameter.ProvidedParameterValidator;
 import org.apache.nifi.parameter.StandardParameterProviderConfiguration;
 import org.apache.nifi.web.ResourceNotFoundException;
 import org.apache.nifi.web.api.dto.AssetReferenceDTO;
@@ -241,7 +242,7 @@ public class StandardParameterContextDAO implements ParameterContextDAO {
             value = dto.getValue();
         }
 
-        return new Parameter.Builder()
+        final Parameter parameter = new Parameter.Builder()
             .name(dto.getName())
             .description(dto.getDescription())
             .sensitive(Boolean.TRUE.equals(dto.getSensitive()))
@@ -250,6 +251,8 @@ public class StandardParameterContextDAO implements ParameterContextDAO {
             .referencedAssets(assets)
             .provided(dto.getProvided())
             .build();
+
+        return ProvidedParameterValidator.normalizeForContext(parameter, context, logger, "REST DAO update");
     }
 
     private List<Asset> getAssets(final List<AssetReferenceDTO> referencedAssets) {

@@ -97,6 +97,7 @@ import org.apache.nifi.parameter.ParameterDescriptor;
 import org.apache.nifi.parameter.ParameterProviderConfiguration;
 import org.apache.nifi.parameter.ParameterReferenceManager;
 import org.apache.nifi.parameter.ParameterReferencedControllerServiceData;
+import org.apache.nifi.parameter.ProvidedParameterValidator;
 import org.apache.nifi.parameter.StandardParameterProviderConfiguration;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.Relationship;
@@ -1830,7 +1831,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
                     contextManager.removeParameterContext(parameterContext.getIdentifier());
                     LOG.info("Successfully synchronized {} by removing it from the flow", parameterContext);
                 } else {
-                    final Map<String, Parameter> updatedParameters = createParameterMap(proposed.getParameters());
+                    final Map<String, Parameter> updatedParameters = createParameterMap(proposed.getParameters(), proposed);
 
                     // If any parameters are removed, need to add a null value to the map in order to make sure that the parameter is removed.
                     for (final ParameterDescriptor existingParameterDescriptor : parameterContext.getParameters().keySet()) {
@@ -2314,7 +2315,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
                 continue;
             }
 
-            final Parameter parameter = createParameter(null, versionedParameter);
+            final Parameter parameter = createParameter(null, versionedParameter, versionedParameterContext);
             parameters.put(versionedParameter.getName(), parameter);
         }
 
@@ -2331,7 +2332,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
                                                     final Map<String, VersionedParameterContext> versionedParameterContexts,
                                                     final Map<String, ParameterProviderReference> parameterProviderReferences, final ComponentIdGenerator componentIdGenerator) {
 
-        final Map<String, Parameter> parameters = createParameterMap(versionedParameterContext.getParameters());
+        final Map<String, Parameter> parameters = createParameterMap(versionedParameterContext.getParameters(), versionedParameterContext);
 
         final List<String> parameterContextRefs = new ArrayList<>();
         if (versionedParameterContext.getInheritedParameterContexts() != null) {
@@ -2351,10 +2352,10 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
         return contextReference.get();
     }
 
-    private Map<String, Parameter> createParameterMap(final Collection<VersionedParameter> versionedParameters) {
+    private Map<String, Parameter> createParameterMap(final Collection<VersionedParameter> versionedParameters, final VersionedParameterContext owner) {
         final Map<String, Parameter> parameters = new HashMap<>();
         for (final VersionedParameter versionedParameter : versionedParameters) {
-            final Parameter parameter = createParameter(null, versionedParameter);
+            final Parameter parameter = createParameter(null, versionedParameter, owner);
             parameters.put(versionedParameter.getName(), parameter);
         }
 
@@ -2405,7 +2406,7 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
                 continue;
             }
 
-            final Parameter parameter = createParameter(currentParameterContext.getIdentifier(), versionedParameter);
+            final Parameter parameter = createParameter(currentParameterContext.getIdentifier(), versionedParameter, versionedParameterContext);
             parameters.put(versionedParameter.getName(), parameter);
         }
 
@@ -2430,8 +2431,10 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
         }
     }
 
-    private Parameter createParameter(final String contextId, final VersionedParameter versionedParameter) {
-        final List<VersionedAsset> referencedAssets = versionedParameter.getReferencedAssets();
+    private Parameter createParameter(final String contextId, final VersionedParameter versionedParameter, final VersionedParameterContext owner) {
+        final VersionedParameter source = ProvidedParameterValidator.normalizeForVersioned(versionedParameter, owner, LOG);
+
+        final List<VersionedAsset> referencedAssets = source.getReferencedAssets();
 
         final List<Asset> assets;
         if (referencedAssets == null || referencedAssets.isEmpty()) {
@@ -2447,12 +2450,12 @@ public class StandardVersionedComponentSynchronizer implements VersionedComponen
         }
 
         return new Parameter.Builder()
-            .name(versionedParameter.getName())
-            .description(versionedParameter.getDescription())
-            .sensitive(versionedParameter.isSensitive())
-            .value(versionedParameter.getValue())
+            .name(source.getName())
+            .description(source.getDescription())
+            .sensitive(source.isSensitive())
+            .value(source.getValue())
             .referencedAssets(assets)
-            .provided(versionedParameter.isProvided())
+            .provided(source.isProvided())
             .parameterContextId(contextId)
             .build();
     }

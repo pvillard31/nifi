@@ -85,7 +85,9 @@ import org.apache.nifi.parameter.ParameterContextManager;
 import org.apache.nifi.parameter.ParameterDescriptor;
 import org.apache.nifi.parameter.ParameterGroup;
 import org.apache.nifi.parameter.ParameterProviderConfiguration;
+import org.apache.nifi.parameter.ProvidedParameterValidator;
 import org.apache.nifi.parameter.StandardParameterProviderConfiguration;
+import org.apache.nifi.parameter.StandardParameterValueMapper;
 import org.apache.nifi.persistence.FlowConfigurationArchiveManager;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.diff.ComparableDataFlow;
@@ -905,7 +907,7 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
         return referenceIds;
     }
 
-    private Map<String, Parameter> createParameterMap(
+    Map<String, Parameter> createParameterMap(
             final FlowManager flowManager,
             final VersionedParameterContext versionedParameterContext,
             final PropertyEncryptor encryptor,
@@ -914,7 +916,14 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
         final Map<String, Parameter> providedParameters = getProvidedParameters(flowManager, versionedParameterContext);
 
         final Map<String, Parameter> parameters = new HashMap<>();
-        for (final VersionedParameter versioned : versionedParameterContext.getParameters()) {
+        for (final VersionedParameter rawVersioned : versionedParameterContext.getParameters()) {
+            // Defensive normalization: a parameter with provided=true is only valid if the owning Parameter Context has
+            // a Parameter Provider bound. If we encounter that invariant violation in flow.json.gz, log an ERROR, drop
+            // the provided flag and treat the persisted value as a regular local literal so the corruption self-heals
+            // on the next flow save. The sentinel value written by StandardParameterValueMapper is normalized to null
+            // so the inherited provider value (if any) wins via the existing override semantics.
+            final VersionedParameter versioned = ProvidedParameterValidator.normalizeForVersioned(rawVersioned, versionedParameterContext, logger);
+
             final String parameterValue;
             final String rawValue = versioned.getValue();
             if (rawValue == null) {
@@ -928,6 +937,11 @@ public class VersionedFlowSynchronizer implements FlowSynchronizer {
                 } else {
                     parameterValue = providedParameter.getValue();
                 }
+            } else if (rawVersioned.isProvided() && StandardParameterValueMapper.PROVIDED_MAPPING.equals(rawValue)) {
+                // The flag was just dropped above; if the on-disk value was the sentinel for a provided parameter, it
+                // does not represent a real value and should not leak through as a literal. Resolve to null so that an
+                // inherited provider value (if one exists) becomes the effective value.
+                parameterValue = null;
             } else if (versioned.isSensitive()) {
                 parameterValue = decrypt(rawValue, encryptor);
             } else {

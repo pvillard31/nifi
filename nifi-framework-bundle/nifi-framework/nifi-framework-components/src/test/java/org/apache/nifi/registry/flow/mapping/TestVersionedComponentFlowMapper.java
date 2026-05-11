@@ -29,11 +29,18 @@ import org.apache.nifi.controller.PropertyConfiguration;
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.controller.service.ControllerServiceProvider;
+import org.apache.nifi.flow.VersionedParameter;
+import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedProcessor;
 import org.apache.nifi.logging.LogLevel;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.parameter.ExpressionLanguageAgnosticParameterParser;
+import org.apache.nifi.parameter.Parameter;
+import org.apache.nifi.parameter.ParameterContext;
+import org.apache.nifi.parameter.ParameterDescriptor;
+import org.apache.nifi.parameter.ParameterProvider;
 import org.apache.nifi.parameter.ParameterReference;
+import org.apache.nifi.parameter.ParameterReferenceManager;
 import org.apache.nifi.parameter.ParameterTokenList;
 import org.apache.nifi.scheduling.ExecutionNode;
 import org.apache.nifi.scheduling.SchedulingStrategy;
@@ -49,8 +56,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -164,6 +173,69 @@ public class TestVersionedComponentFlowMapper {
         } else {
             assertEquals("1234", idReferenced);
         }
+    }
+
+    @Test
+    public void testMapParameterContextForcesProvidedFalseWhenNoProviderBound() {
+        final ExtensionManager extensionManager = mock(ExtensionManager.class);
+        final FlowMappingOptions mappingOptions = FlowMappingOptions.DEFAULT_OPTIONS;
+        final VersionedComponentFlowMapper mapper = new VersionedComponentFlowMapper(extensionManager, mappingOptions);
+
+        final ParameterDescriptor descriptor = new ParameterDescriptor.Builder().name("included-table-regex").build();
+        final Parameter corruptParameter = new Parameter.Builder()
+                .descriptor(descriptor)
+                .value("AWS_VALUE")
+                .provided(true)
+                .build();
+
+        final ParameterContext parameterContext = mockParameterContext("LocalPC", "local-pc", null, descriptor, corruptParameter);
+
+        final VersionedParameterContext mapped = mapper.mapParameterContext(parameterContext);
+        assertNotNull(mapped);
+        assertEquals(1, mapped.getParameters().size());
+
+        final VersionedParameter versioned = mapped.getParameters().iterator().next();
+        assertEquals("included-table-regex", versioned.getName());
+        assertFalse(versioned.isProvided(), "Save-side guard must force provided=false when context has no provider bound");
+    }
+
+    @Test
+    public void testMapParameterContextPreservesProvidedTrueWhenProviderBound() {
+        final ExtensionManager extensionManager = mock(ExtensionManager.class);
+        final FlowMappingOptions mappingOptions = FlowMappingOptions.DEFAULT_OPTIONS;
+        final VersionedComponentFlowMapper mapper = new VersionedComponentFlowMapper(extensionManager, mappingOptions);
+
+        final ParameterDescriptor descriptor = new ParameterDescriptor.Builder().name("included-table-regex").build();
+        final Parameter providedParameter = new Parameter.Builder()
+                .descriptor(descriptor)
+                .value("AWS_VALUE")
+                .provided(true)
+                .build();
+
+        final ParameterContext parameterContext = mockParameterContext("ProvidedPC", "provided-pc", mock(ParameterProvider.class), descriptor, providedParameter);
+
+        final VersionedParameterContext mapped = mapper.mapParameterContext(parameterContext);
+        assertNotNull(mapped);
+
+        final VersionedParameter versioned = mapped.getParameters().iterator().next();
+        assertTrue(versioned.isProvided(), "Provided flag must be preserved when context has a provider bound");
+    }
+
+    private static ParameterContext mockParameterContext(final String name, final String identifier, final ParameterProvider provider,
+                                                         final ParameterDescriptor descriptor, final Parameter parameter) {
+        final ParameterReferenceManager referenceManager = mock(ParameterReferenceManager.class);
+        when(referenceManager.getReferencedControllerServiceData(any(ParameterContext.class), any(String.class))).thenReturn(Collections.emptyList());
+
+        final ParameterContext parameterContext = mock(ParameterContext.class);
+        when(parameterContext.getName()).thenReturn(name);
+        when(parameterContext.getIdentifier()).thenReturn(identifier);
+        when(parameterContext.getDescription()).thenReturn(null);
+        when(parameterContext.getParameterProvider()).thenReturn(provider);
+        when(parameterContext.getParameterProviderConfiguration()).thenReturn(null);
+        when(parameterContext.getInheritedParameterContextNames()).thenReturn(Collections.emptyList());
+        when(parameterContext.getParameters()).thenReturn(Collections.singletonMap(descriptor, parameter));
+        when(parameterContext.getParameterReferenceManager()).thenReturn(referenceManager);
+        return parameterContext;
     }
 
     private ProcessorNode createProcessorNode(final Map<String, String> properties) {

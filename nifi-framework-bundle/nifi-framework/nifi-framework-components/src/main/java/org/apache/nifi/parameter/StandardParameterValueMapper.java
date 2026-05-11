@@ -24,7 +24,7 @@ import java.util.Objects;
  * Standard implementation with encryptor for sensitive values
  */
 public class StandardParameterValueMapper implements ParameterValueMapper {
-    static final String PROVIDED_MAPPING = "provided:parameter";
+    public static final String PROVIDED_MAPPING = "provided:parameter";
 
     private static final String ENCRYPTED_FORMAT = "enc{%s}";
 

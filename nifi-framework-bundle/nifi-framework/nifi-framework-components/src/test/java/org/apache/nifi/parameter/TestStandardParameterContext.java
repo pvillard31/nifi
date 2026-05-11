@@ -163,11 +163,7 @@ public class TestStandardParameterContext {
     @Test
     public void testUpdateSensitivity() {
         final ParameterReferenceManager referenceManager = new HashMapParameterReferenceManager();
-        final StandardParameterContext context = new StandardParameterContext.Builder()
-                .id("unit-test-context")
-                .name("unit-test-context")
-                .parameterReferenceManager(referenceManager)
-                .build();
+        final StandardParameterContext context = createParameterContextWithProvider("unit-test-context", referenceManager, "test-provider");
         final ParameterDescriptor abcDescriptor = new ParameterDescriptor.Builder().name("abc").description("abc").build();
 
         final Map<String, Parameter> parameters = new HashMap<>();
@@ -182,7 +178,7 @@ public class TestStandardParameterContext {
 
         ParameterDescriptor updatedDescriptor = new ParameterDescriptor.Builder().name("abc").description("abc").sensitive(true).build();
         final Parameter unprovidedParam = createParameter(updatedDescriptor, "321", false);
-        assertThrows(IllegalStateException.class, () -> context.setParameters(Collections.singletonMap("abc", unprovidedParam)));
+        assertThrows(IllegalArgumentException.class, () -> context.setParameters(Collections.singletonMap("abc", unprovidedParam)));
 
         final Parameter newSensitivityParam = createParameter(updatedDescriptor, "321", true);
         context.setParameters(Collections.singletonMap("abc", newSensitivityParam));
@@ -194,6 +190,28 @@ public class TestStandardParameterContext {
         context.getParameters().keySet().forEach(pd -> {
             assertTrue(pd.isSensitive());
         });
+    }
+
+    private static StandardParameterContext createParameterContextWithProvider(final String id, final ParameterReferenceManager referenceManager, final String providerId) {
+        final ParameterProvider parameterProvider = mock(ParameterProvider.class);
+        when(parameterProvider.getIdentifier()).thenReturn(providerId);
+
+        final org.apache.nifi.controller.ParameterProviderNode parameterProviderNode = mock(org.apache.nifi.controller.ParameterProviderNode.class);
+        when(parameterProviderNode.getIdentifier()).thenReturn(providerId);
+        when(parameterProviderNode.getParameterProvider()).thenReturn(parameterProvider);
+
+        final org.apache.nifi.controller.parameter.ParameterProviderLookup lookup = mock(org.apache.nifi.controller.parameter.ParameterProviderLookup.class);
+        when(lookup.getParameterProvider(providerId)).thenReturn(parameterProviderNode);
+
+        final ParameterProviderConfiguration providerConfiguration = new StandardParameterProviderConfiguration(providerId, "group", true);
+
+        return new StandardParameterContext.Builder()
+                .id(id)
+                .name(id)
+                .parameterReferenceManager(referenceManager)
+                .parameterProviderLookup(lookup)
+                .parameterProviderConfiguration(providerConfiguration)
+                .build();
     }
 
     @Test
@@ -884,6 +902,69 @@ public class TestStandardParameterContext {
             assertTrue(e.getMessage().contains("foo"));
         }
         assertEquals(Collections.emptyList(), a.getInheritedParameterContexts());
+    }
+
+    @Test
+    public void testSetParametersRejectsProvidedTrueWhenNoProviderBound() {
+        final ParameterReferenceManager referenceManager = new HashMapParameterReferenceManager();
+        final StandardParameterContext context = new StandardParameterContext.Builder()
+                .id("unit-test-context")
+                .name("unit-test-context")
+                .parameterReferenceManager(referenceManager)
+                .build();
+
+        final ParameterDescriptor descriptor = new ParameterDescriptor.Builder().name("included-table-regex").build();
+        final Parameter providedParameter = new Parameter.Builder()
+                .descriptor(descriptor)
+                .value("AWS_VALUE")
+                .provided(true)
+                .build();
+
+        final IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> context.setParameters(Collections.singletonMap("included-table-regex", providedParameter)));
+        assertTrue(exception.getMessage().contains("provided=true"));
+        assertTrue(exception.getMessage().contains("included-table-regex"));
+    }
+
+    @Test
+    public void testVerifyCanUpdateParameterContextRejectsProvidedTrueWhenNoProviderBound() {
+        final ParameterReferenceManager referenceManager = new HashMapParameterReferenceManager();
+        final StandardParameterContext context = new StandardParameterContext.Builder()
+                .id("unit-test-context")
+                .name("unit-test-context")
+                .parameterReferenceManager(referenceManager)
+                .build();
+
+        final ParameterDescriptor descriptor = new ParameterDescriptor.Builder().name("included-table-regex").build();
+        final Parameter providedParameter = new Parameter.Builder()
+                .descriptor(descriptor)
+                .value("AWS_VALUE")
+                .provided(true)
+                .build();
+
+        final IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> context.verifyCanUpdateParameterContext(Collections.singletonMap("included-table-regex", providedParameter), Collections.emptyList()));
+        assertTrue(exception.getMessage().contains("provided=true"));
+    }
+
+    @Test
+    public void testSetParametersAcceptsProvidedFalseWhenNoProviderBound() {
+        final ParameterReferenceManager referenceManager = new HashMapParameterReferenceManager();
+        final StandardParameterContext context = new StandardParameterContext.Builder()
+                .id("unit-test-context")
+                .name("unit-test-context")
+                .parameterReferenceManager(referenceManager)
+                .build();
+
+        final ParameterDescriptor descriptor = new ParameterDescriptor.Builder().name("included-table-regex").build();
+        final Parameter normalParameter = new Parameter.Builder()
+                .descriptor(descriptor)
+                .value("local-value")
+                .provided(false)
+                .build();
+
+        context.setParameters(Collections.singletonMap("included-table-regex", normalParameter));
+        assertEquals("local-value", context.getParameter("included-table-regex").get().getValue());
     }
 
     private static void removeParameter(final ParameterContext parameterContext, final String name) {

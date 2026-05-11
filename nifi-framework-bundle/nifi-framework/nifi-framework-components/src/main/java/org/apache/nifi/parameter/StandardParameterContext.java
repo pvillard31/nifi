@@ -54,6 +54,21 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
+/**
+ * Default {@link ParameterContext} implementation.
+ *
+ * <p><strong>Provided Parameter invariant.</strong> A {@link Parameter} with {@code provided = true} may only ever be
+ * applied to a Parameter Context that has a {@link ParameterProvider} bound. The framework persistence contract
+ * (see {@link StandardParameterValueMapper} and the load path in
+ * {@code org.apache.nifi.controller.serialization.VersionedFlowSynchronizer#createParameterMap}) guarantees that the
+ * value of a provided parameter is never written to {@code flow.json.gz} and is instead re-fetched at startup from the
+ * bound provider. A context without a provider therefore cannot satisfy that contract for any provided parameter, and
+ * such a combination is corrupt state. This class enforces the invariant on every write path through
+ * {@link #verifyLocalProvidedParameters(Map)}, which rejects a {@code provided = true} update with an
+ * {@link IllegalArgumentException} when no provider is bound. Defensive normalization is applied at the upstream
+ * write entry points (REST DAO and the runtime versioned-flow synchronizer) and at flow load to heal any corrupt
+ * state already on disk.</p>
+ */
 public class StandardParameterContext implements ParameterContext {
     private static final Logger logger = LoggerFactory.getLogger(StandardParameterContext.class);
 
@@ -128,6 +143,8 @@ public class StandardParameterContext implements ParameterContext {
 
     @Override
     public void setParameters(final Map<String, Parameter> updatedParameters) {
+        verifyLocalProvidedParameters(updatedParameters);
+
         writeLock.lock();
         final Map<String, ParameterUpdate> parameterUpdates = new HashMap<>();
         try {
@@ -585,7 +602,44 @@ public class StandardParameterContext implements ParameterContext {
                 throw new IllegalArgumentException(String.format("Cannot make user-entered updates to Parameter Context [%s] parameter [%s] because its parameters " +
                         "are provided by Parameter Provider [%s]", name, parameterName, parameterProvider.getIdentifier()));
             }
+            if (parameterProvider == null && parameter != null && parameter.isProvided()) {
+                throw new IllegalArgumentException(String.format("Cannot update Parameter Context [%s] parameter [%s] with provided=true because the context " +
+                        "has no Parameter Provider bound", name, parameterName));
+            }
         });
+    }
+
+    /**
+     * Enforces the framework invariant that a parameter with {@code provided=true} can only be added or updated on a
+     * Parameter Context that has a Parameter Provider bound. This is a write-side guard against a corrupt state where
+     * the persistence layer would later refuse to resolve the value at flow load. The check considers only the local
+     * parameters being set on this context; inherited parameters that come from a provider-bound parent are unaffected.
+     *
+     * @param updatedParameters the local parameters being set, keyed by parameter name
+     * @throws IllegalArgumentException if any parameter is marked {@code provided=true} but this context has no
+     *                                  Parameter Provider bound
+     */
+    private void verifyLocalProvidedParameters(final Map<String, Parameter> updatedParameters) {
+        if (updatedParameters == null) {
+            return;
+        }
+        readLock.lock();
+        try {
+            if (parameterProvider != null) {
+                return;
+            }
+        } finally {
+            readLock.unlock();
+        }
+
+        final List<String> illegalProvided = updatedParameters.values().stream()
+                .filter(parameter -> parameter != null && parameter.isProvided())
+                .map(parameter -> parameter.getDescriptor().getName())
+                .collect(Collectors.toList());
+        if (!illegalProvided.isEmpty()) {
+            throw new IllegalArgumentException(String.format("Parameters %s in Context [%s] cannot be marked provided=true because the context has no Parameter Provider bound",
+                    illegalProvided, name));
+        }
     }
 
     @Override

@@ -104,6 +104,8 @@ import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.VersionControlInformation;
 import org.apache.nifi.remote.PublicPort;
 import org.apache.nifi.remote.RemoteGroupPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -122,6 +124,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class VersionedComponentFlowMapper {
+    private static final Logger logger = LoggerFactory.getLogger(VersionedComponentFlowMapper.class);
+
     private static final String ENCRYPTED_PREFIX = "enc{";
     private static final String ENCRYPTED_SUFFIX = "}";
 
@@ -949,7 +953,7 @@ public class VersionedComponentFlowMapper {
                 .getReferencedControllerServiceData(parameterContext, parameterDescriptor.getName());
 
             if (referencedControllerServiceData.isEmpty()) {
-                versionedParameter = mapParameter(parameter);
+                versionedParameter = mapParameter(parameterContext, parameter);
             } else {
                 final String referencedVersionServiceId = referencedControllerServiceData.getFirst().getVersionedServiceId();
                 final String parameterValue = parameter.getValue();
@@ -957,19 +961,19 @@ public class VersionedComponentFlowMapper {
                 // If a referenced Versioned Service ID is available, use it directly. Do not attempt to
                 // generate or cache a mapping using a null component identifier.
                 if (referencedVersionServiceId != null) {
-                    versionedParameter = mapParameter(parameter, referencedVersionServiceId);
+                    versionedParameter = mapParameter(parameterContext, parameter, referencedVersionServiceId);
                 } else if (parameterValue != null && !parameterValue.isBlank()) {
                     // If the parameter has a concrete (non-empty) value referencing a service instance id,
                     // generate a stable Versioned ID for it.
                     final String serviceId = getId(Optional.empty(), parameterValue);
-                    versionedParameter = mapParameter(parameter, serviceId);
+                    versionedParameter = mapParameter(parameterContext, parameter, serviceId);
                 } else {
                     // No referenced service and no parameter value specified; map as null to avoid NPE
-                    versionedParameter = mapParameter(parameter, null);
+                    versionedParameter = mapParameter(parameterContext, parameter, null);
                 }
             }
         } else {
-            versionedParameter = mapParameter(parameter);
+            versionedParameter = mapParameter(parameterContext, parameter);
         }
 
         return versionedParameter;
@@ -993,11 +997,11 @@ public class VersionedComponentFlowMapper {
         return reference;
     }
 
-    private VersionedParameter mapParameter(final Parameter parameter) {
-        return mapParameter(parameter, parameter.getValue());
+    private VersionedParameter mapParameter(final ParameterContext parameterContext, final Parameter parameter) {
+        return mapParameter(parameterContext, parameter, parameter.getValue());
     }
 
-    private VersionedParameter mapParameter(final Parameter parameter, final String value) {
+    private VersionedParameter mapParameter(final ParameterContext parameterContext, final Parameter parameter, final String value) {
         final ParameterDescriptor descriptor = parameter.getDescriptor();
 
         final VersionedParameter versionedParameter = new VersionedParameter();
@@ -1005,6 +1009,16 @@ public class VersionedComponentFlowMapper {
         versionedParameter.setName(descriptor.getName());
         versionedParameter.setSensitive(descriptor.isSensitive());
         versionedParameter.setProvided(parameter.isProvided());
+
+        // Defensive normalization on save: a parameter with provided=true must only ever be persisted on a context that
+        // has a Parameter Provider bound. If we encounter an in-memory invariant violation, force provided=false in the
+        // serialized form so flow.json.gz cannot accumulate the corrupt state that produces failures at the next restart.
+        if (parameter.isProvided() && (parameterContext == null || parameterContext.getParameterProvider() == null)) {
+            final String contextName = parameterContext == null ? "<unbound>" : parameterContext.getName();
+            logger.error("Invariant violation while serializing Parameter Context [{}]: Parameter [{}] is provided=true but no Parameter Provider is bound. " +
+                    "Persisting as provided=false to avoid corrupting flow.json.gz.", contextName, descriptor.getName());
+            versionedParameter.setProvided(false);
+        }
 
         final List<Asset> referencedAssets = parameter.getReferencedAssets();
         if (referencedAssets == null || referencedAssets.isEmpty()) {

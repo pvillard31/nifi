@@ -1161,6 +1161,42 @@ public class ParameterContextIT extends NiFiSystemIT {
         waitForStoppedProcessor(ingest.getId());
     }
 
+    /**
+     * Reproduces the historical corruption pattern where a Parameter is submitted with provided=true to a Parameter
+     * Context that has no Parameter Provider bound. The REST DAO write-side normalizer must coerce the provided flag
+     * to false before the parameter is persisted so that flow.json.gz can never accumulate a state that the load path
+     * would later refuse to resolve. The literal value supplied by the caller is preserved as a regular local literal.
+     */
+    @Test
+    public void testProvidedParameterNormalizedWhenContextHasNoProvider() throws NiFiClientException, IOException {
+        final ParameterDTO parameterDto = new ParameterDTO();
+        parameterDto.setName("Included Table Regex");
+        parameterDto.setValue("AWS_VALUE");
+        parameterDto.setSensitive(false);
+        parameterDto.setProvided(true);
+
+        final ParameterEntity parameterEntity = new ParameterEntity();
+        parameterEntity.setParameter(parameterDto);
+
+        final Set<ParameterEntity> parameterEntities = new HashSet<>();
+        parameterEntities.add(parameterEntity);
+
+        final ParameterContextEntity entity = createParameterContextEntity(getTestName(), null, parameterEntities);
+
+        final ParamContextClient paramContextClient = getNifiClient().getParamContextClient();
+        final ParameterContextEntity created = paramContextClient.createParamContext(entity);
+        final ParameterContextEntity fetched = paramContextClient.getParamContext(created.getId(), false);
+
+        final Set<ParameterEntity> returnedParameters = fetched.getComponent().getParameters();
+        assertEquals(1, returnedParameters.size());
+
+        final ParameterDTO returnedParameter = returnedParameters.iterator().next().getParameter();
+        assertEquals("Included Table Regex", returnedParameter.getName());
+        assertEquals("AWS_VALUE", returnedParameter.getValue());
+        assertFalse(Boolean.TRUE.equals(returnedParameter.getProvided()),
+                "Framework must coerce provided=true to false when the owning Parameter Context has no Parameter Provider");
+    }
+
     private Map<String, Long> waitForCounter(final String context, final String counterName, final long expectedValue) throws NiFiClientException, IOException, InterruptedException {
         return getClientUtil().waitForCounter(context, counterName, expectedValue);
     }
